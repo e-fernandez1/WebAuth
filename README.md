@@ -1,4 +1,4 @@
-# SecureAuth
+# WebAuth
 
 A Flask web application demonstrating modern authentication: live password-rule
 validation, salted bcrypt hashing, email-based two-factor authentication,

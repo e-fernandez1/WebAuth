@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Email Verification &middot; WebAuth{% endblock %}
+{% block title %}Confirm Email &middot; WebAuth{% endblock %}
 
 {% block content %}
 <section class="py-5">
     <div class="container">
         <div class="row justify-content-center">
             <div class="col-lg-5">
-                <h2 class="mb-3">Email Verification</h2>
-                <p class="text-muted">Step 2 of 2. Check the inbox for <strong>{{ email }}</strong> &mdash; we sent a 6-digit code that expires in 5 minutes.</p>
+                <h2 class="mb-3">Confirm Your Email</h2>
+                <p class="text-muted">Almost done, <strong>{{ username }}</strong>. Check the inbox for <strong>{{ email }}</strong> &mdash; we sent a 6-digit code that expires in 10 minutes. Your account isn't active until you confirm.</p>
 
                 {% with messages = get_flashed_messages(with_categories=true) %}
                     {% for category, message in messages %}
@@ -20,12 +20,12 @@
                         <label class="form-label">6-digit Code</label>
                         <input class="form-control form-control-lg text-center" name="code" pattern="[0-9]{6}" maxlength="6" required autofocus inputmode="numeric" autocomplete="one-time-code">
                     </div>
-                    <button type="submit" class="btn btn-warning">Verify</button>
-                    <a href="{{ url_for('resend_code') }}" class="btn btn-link">Resend code</a>
+                    <button type="submit" class="btn btn-warning">Confirm &amp; Create Account</button>
+                    <a href="{{ url_for('resend_signup_code') }}" class="btn btn-link">Resend code</a>
                 </form>
 
                 <p class="text-muted small mt-4">
-                    Codes are 6 random digits, single-use, and expire after 5 minutes. A captured code is useless after one verification or one rotation window. Your password alone is not enough &mdash; an attacker also needs access to your email account.
+                    If you can't find the email, check your spam folder. We don't store the password hash on a real account until you confirm &mdash; so a fake or unreachable email never produces a usable account.
                 </p>
             </div>
         </div>

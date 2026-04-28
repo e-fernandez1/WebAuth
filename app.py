@@ -116,7 +116,7 @@ SMTP_HOST = os.environ.get("SMTP_HOST", "")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "465"))
 SMTP_USER = os.environ.get("SMTP_USER", "")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-SMTP_FROM = os.environ.get("SMTP_FROM", SMTP_USER or "noreply@securauth.demo")
+SMTP_FROM = os.environ.get("SMTP_FROM", SMTP_USER or "noreply@webauth.demo")
 
 
 LOGIN_ATTEMPTS = defaultdict(list)
@@ -177,11 +177,11 @@ def auto_seed_if_empty():
         return
     print("[AUTO-SEED] No users found, creating defaults...")
     seed_users = [
-        ("admin",     "admin@securauth.demo",   "AdminPassword123!",  True),
-        ("testuser",  "test@securauth.demo",    "TestPassword123!",   False),
-        ("alice",     "alice@securauth.demo",   "AlicePassword123!",  False),
-        ("bob",       "bob@securauth.demo",     "BobPassword123!",    False),
-        ("demo",      "demo@securauth.demo",    "DemoPassword123!",   False),
+        ("admin",     "admin@webauth.demo",   "AdminPassword123!",  True),
+        ("testuser",  "test@webauth.demo",    "TestPassword123!",   False),
+        ("alice",     "alice@webauth.demo",   "AlicePassword123!",  False),
+        ("bob",       "bob@webauth.demo",     "BobPassword123!",    False),
+        ("demo",      "demo@webauth.demo",    "DemoPassword123!",   False),
     ]
     for username, email, password, is_admin in seed_users:
         pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))
@@ -288,11 +288,11 @@ def send_verification_email(to_email, code):
         return True
 
     msg = EmailMessage()
-    msg["Subject"] = "Your SecureAuth verification code"
+    msg["Subject"] = "Your WebAuth verification code"
     msg["From"] = SMTP_FROM
     msg["To"] = to_email
     msg.set_content(
-        f"Your SecureAuth verification code is: {code}\n\n"
+        f"Your WebAuth verification code is: {code}\n\n"
         f"This code expires in 5 minutes. If you did not request it, ignore this email."
     )
     try:
@@ -327,11 +327,11 @@ def send_signup_email(to_email, code):
         print("=" * 60 + "\n")
         return True
     msg = EmailMessage()
-    msg["Subject"] = "Confirm your SecureAuth account"
+    msg["Subject"] = "Confirm your WebAuth account"
     msg["From"] = SMTP_FROM
     msg["To"] = to_email
     msg.set_content(
-        f"Welcome to SecureAuth.\n\n"
+        f"Welcome to WebAuth.\n\n"
         f"Your account confirmation code is: {code}\n\n"
         f"This code expires in 10 minutes. If you did not sign up, ignore this email."
     )

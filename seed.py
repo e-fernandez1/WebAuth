@@ -13,11 +13,11 @@ from models import AuthEvent, EmailCode, User, db
 
 TEST_USERS = [
     # (username, email, password, is_admin)
-    ("admin",     "admin@securauth.demo",   "AdminPassword123!",  True),
-    ("testuser",  "test@securauth.demo",    "TestPassword123!",   False),
-    ("alice",     "alice@securauth.demo",   "AlicePassword123!",  False),
-    ("bob",       "bob@securauth.demo",     "BobPassword123!",    False),
-    ("demo",      "demo@securauth.demo",    "DemoPassword123!",   False),
+    ("admin",     "admin@webauth.demo",   "AdminPassword123!",  True),
+    ("testuser",  "test@webauth.demo",    "TestPassword123!",   False),
+    ("alice",     "alice@webauth.demo",   "AlicePassword123!",  False),
+    ("bob",       "bob@webauth.demo",     "BobPassword123!",    False),
+    ("demo",      "demo@webauth.demo",    "DemoPassword123!",   False),
 ]
 
 

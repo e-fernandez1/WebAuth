@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Code Walkthrough &middot; SecureAuth{% endblock %}
+{% block title %}Code Walkthrough &middot; WebAuth{% endblock %}
 
 {% block content %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
@@ -110,7 +110,7 @@
                 <section class="walk" id="overview">
                     <h3>1. Project Overview</h3>
                     <p>
-                        SecureAuth is a Flask web application that demonstrates production-grade authentication
+                        WebAuth is a Flask web application that demonstrates production-grade authentication
                         controls: password rules with live feedback, salted bcrypt hashing, email-based two-factor
                         authentication, IP-based rate limiting, signed session cookies, and a real-time analytics
                         dashboard that streams every authentication event on the system.
@@ -244,7 +244,7 @@ def send_verification_email(to_email, code):
         print(f"[EMAIL FALLBACK]  To: {to_email}  Code: {code}")
         return True
     msg = EmailMessage()
-    msg["Subject"] = "Your SecureAuth verification code"
+    msg["Subject"] = "Your WebAuth verification code"
     msg["From"] = SMTP_FROM
     msg["To"] = to_email
     msg.set_content(f"Your code is: {code}\nExpires in 5 minutes.")
