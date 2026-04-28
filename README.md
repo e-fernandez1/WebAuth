@@ -1,8 +1,11 @@
 # WebAuth
 
 A Flask web application demonstrating modern authentication: live password-rule
-validation, salted bcrypt hashing, email-based two-factor authentication,
-IP-based rate limiting, signed sessions, and a real-time analytics dashboard.
+validation, salted bcrypt hashing, email-based two-factor authentication with
+signup confirmation, IP-based rate limiting, signed and hardened session
+cookies, security headers (HSTS, X-Frame-Options, etc.), an admin console with
+audit logging, a real-time analytics dashboard, and an "Attack Lab" with seven
+live simulators that exercise each defense.
 
 ## Run locally
 

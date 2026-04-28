@@ -95,13 +95,15 @@
                     <a href="#password-rules">4. Password Validation</a>
                     <a href="#bcrypt">5. bcrypt Hashing</a>
                     <a href="#email-2fa">6. Email-Based 2FA</a>
-                    <a href="#verify">7. Verification Flow</a>
-                    <a href="#rate-limit">8. Rate Limiting</a>
-                    <a href="#sessions">9. Session Management</a>
-                    <a href="#admin">10. Admin Authorization</a>
-                    <a href="#analytics">11. Real-Time Analytics</a>
-                    <a href="#simulator">12. Brute Force Simulator</a>
-                    <a href="#why">13. Why These Choices</a>
+                    <a href="#email-confirm">7. Email Confirmation at Signup</a>
+                    <a href="#verify">8. Verification Flow</a>
+                    <a href="#rate-limit">9. Rate Limiting</a>
+                    <a href="#sessions">10. Session Management</a>
+                    <a href="#headers">11. Security Headers</a>
+                    <a href="#admin">12. Admin Authorization</a>
+                    <a href="#analytics">13. Real-Time Analytics</a>
+                    <a href="#attack-lab">14. Attack Lab</a>
+                    <a href="#why">15. Why These Choices</a>
                 </nav>
             </div>
 
@@ -135,11 +137,12 @@
                         &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">index.html</span>           <span class="dim"># Landing + live TOTP demo</span><br>
                         &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">signup.html</span>          <span class="dim"># Signup form with live password meter</span><br>
                         &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">login.html</span>           <span class="dim"># Step 1: password</span><br>
-                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">verify.html</span>          <span class="dim"># Step 2: email code</span><br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">verify.html</span>          <span class="dim"># Step 2: email code (login)</span><br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">confirm_signup.html</span>  <span class="dim"># Confirm email at signup before account is created</span><br>
                         &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">dashboard.html</span>       <span class="dim"># Gated user page</span><br>
-                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">analytics.html</span>       <span class="dim"># Public live dashboard</span><br>
-                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">security.html</span>        <span class="dim"># Threat model + brute-force simulator</span><br>
-                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">admin.html</span>           <span class="dim"># Admin console: users, events, tools</span><br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">analytics.html</span>       <span class="dim"># Public live dashboard (60s window chart)</span><br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">security.html</span>        <span class="dim"># Threat model + Attack Lab (7 live simulators)</span><br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">admin.html</span>           <span class="dim"># Admin console: monitor, users, events, tools</span><br>
                         &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">explained.html</span>       <span class="dim"># This page</span><br>
                         &nbsp;&nbsp;static/<br>
                         &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">style.css</span>            <span class="dim"># Dark theme, animations, layout</span><br>
@@ -155,6 +158,7 @@
     username      = db.Column(db.String(64), unique=True, nullable=False)
     email         = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.LargeBinary, nullable=False)
+    is_admin      = db.Column(db.Boolean, default=False, nullable=False)
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -166,16 +170,32 @@ class EmailCode(db.Model):
     used       = db.Column(db.Boolean, default=False)
 
 
+class PendingSignup(db.Model):
+    id            = db.Column(db.Integer, primary_key=True)
+    username      = db.Column(db.String(64), nullable=False)
+    email         = db.Column(db.String(120), nullable=False)
+    password_hash = db.Column(db.LargeBinary, nullable=False)
+    code          = db.Column(db.String(6), nullable=False)
+    expires_at    = db.Column(db.DateTime, nullable=False)
+
+
 class AuthEvent(db.Model):
-    id         = db.Column(db.Integer, primary_key=True)
-    event_type = db.Column(db.String(32), nullable=False)
-    username   = db.Column(db.String(64))
-    detail     = db.Column(db.String(255))
-    ip         = db.Column(db.String(45))
-    timestamp  = db.Column(db.DateTime, default=datetime.utcnow, index=True)</code></pre>
+    id            = db.Column(db.Integer, primary_key=True)
+    event_type    = db.Column(db.String(32), nullable=False)
+    username      = db.Column(db.String(64))
+    detail        = db.Column(db.String(255))
+    ip            = db.Column(db.String(45))
+    user_agent    = db.Column(db.String(255))     # raw UA header
+    browser       = db.Column(db.String(64))      # parsed
+    os_family     = db.Column(db.String(64))
+    device        = db.Column(db.String(32))      # desktop / mobile / tablet / bot
+    country       = db.Column(db.String(64))      # geolocated from IP
+    city          = db.Column(db.String(64))
+    attack_vector = db.Column(db.String(32))      # auto-classified
+    timestamp     = db.Column(db.DateTime, default=datetime.utcnow, index=True)</code></pre>
                     <div class="why">
                         <p class="label">Why this schema</p>
-                        <p class="mb-0"><strong>password_hash is bytes, not text</strong> &mdash; bcrypt produces binary, and storing it as <code>LargeBinary</code> avoids any encoding ambiguity. <strong>EmailCode is its own table</strong> rather than a column on User because codes are short-lived, single-use objects with a clear lifecycle (issued, expires, used). <strong>AuthEvent is append-only</strong> and indexed on timestamp so the analytics dashboard can pull recent events cheaply.</p>
+                        <p class="mb-0"><strong>password_hash is bytes, not text</strong> &mdash; bcrypt produces binary, and storing it as <code>LargeBinary</code> avoids any encoding ambiguity. <strong>PendingSignup is separate from User</strong> so a signup attempt can be discarded without polluting the real user table if the email is never confirmed. <strong>AuthEvent is append-only</strong> and indexed on timestamp; capturing browser/OS/geo/attack_vector inline (instead of in a separate table) keeps the live dashboard query simple.</p>
                     </div>
                 </section>
 
@@ -261,8 +281,47 @@ def send_verification_email(to_email, code):
                     </div>
                 </section>
 
+                <section class="walk" id="email-confirm">
+                    <h3>7. Email Confirmation at Signup</h3>
+                    <span class="file-tag">app.py</span>
+<pre><code class="language-python">@app.route("/signup", methods=["GET", "POST"])
+def signup():
+    if request.method == "POST":
+        # ... validate inputs (format, deliverability, password rules, uniqueness) ...
+        pw_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12))
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        pending = PendingSignup(
+            username=username, email=email, password_hash=pw_hash,
+            code=code, expires_at=datetime.utcnow() + timedelta(minutes=10),
+        )
+        db.session.add(pending)
+        db.session.commit()
+        send_signup_email(email, code)
+        session["pending_signup_id"] = pending.id
+        return redirect(url_for("confirm_signup"))
+
+
+@app.route("/confirm-signup", methods=["GET", "POST"])
+def confirm_signup():
+    pending = db.session.get(PendingSignup, session.get("pending_signup_id"))
+    if not pending or datetime.utcnow() > pending.expires_at:
+        return redirect(url_for("signup"))   # expired or missing
+    if request.method == "POST":
+        if request.form.get("code", "").strip() == pending.code:
+            user = User(username=pending.username, email=pending.email,
+                        password_hash=pending.password_hash, is_admin=False)
+            db.session.add(user)
+            db.session.delete(pending)        # promote pending -> real user
+            db.session.commit()
+            return redirect(url_for("login"))</code></pre>
+                    <div class="why">
+                        <p class="label">Why a separate pending row instead of just creating the user</p>
+                        <p class="mb-0">Writing the User row only after the email is confirmed means a fake or unreachable email never produces a usable account. The <code>email-validator</code> library catches malformed addresses and undeliverable domains earlier in the flow, but the only way to verify the address actually belongs to the signer is to send a code there and require it back. Pending signups self-expire after 10 minutes, so abandoned attempts don't accumulate. The password hash lives on PendingSignup, not in session, so an attacker inspecting their own signed cookie can't read someone else's hash.</p>
+                    </div>
+                </section>
+
                 <section class="walk" id="verify">
-                    <h3>7. Verification Flow</h3>
+                    <h3>8. Verification Flow</h3>
                     <span class="file-tag">app.py</span>
 <pre><code class="language-python">@app.route("/verify", methods=["GET", "POST"])
 def verify():
@@ -297,7 +356,7 @@ def verify():
                 </section>
 
                 <section class="walk" id="rate-limit">
-                    <h3>8. Rate Limiting</h3>
+                    <h3>9. Rate Limiting</h3>
                     <span class="file-tag">app.py</span>
 <pre><code class="language-python">LOGIN_ATTEMPTS = defaultdict(list)              # ip -&gt; list of attempt timestamps
 RATE_LIMIT_WINDOW = timedelta(minutes=1)
@@ -323,7 +382,7 @@ if is_rate_limited(ip):
                 </section>
 
                 <section class="walk" id="sessions">
-                    <h3>9. Session Management</h3>
+                    <h3>10. Session Management</h3>
                     <span class="file-tag">app.py</span>
 <pre><code class="language-python">app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-me-in-prod")
 
@@ -344,8 +403,40 @@ def dashboard():
                     </div>
                 </section>
 
+                <section class="walk" id="headers">
+                    <h3>11. Security Headers</h3>
+                    <span class="file-tag">app.py</span>
+<pre><code class="language-python">app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"]   = os.environ.get("FLASK_ENV") != "development"
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
+
+
+@app.after_request
+def set_security_headers(response):
+    response.headers["X-Content-Type-Options"]  = "nosniff"
+    response.headers["X-Frame-Options"]         = "DENY"
+    response.headers["Referrer-Policy"]         = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"]      = "geolocation=(), microphone=(), camera=()"
+    if request.is_secure:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response</code></pre>
+                    <div class="why">
+                        <p class="label">Why each header</p>
+                        <ul class="small mb-0">
+                            <li><strong>HttpOnly</strong> — JavaScript can't read <code>document.cookie</code>, so an XSS payload can't steal the session.</li>
+                            <li><strong>SameSite=Lax</strong> — browser refuses to attach the cookie on cross-site POSTs, blocking CSRF without needing form tokens.</li>
+                            <li><strong>Secure (prod)</strong> — cookie only sent over HTTPS, so it can't leak over an unsecured network.</li>
+                            <li><strong>X-Frame-Options: DENY</strong> — site can't be embedded in an iframe, blocking clickjacking.</li>
+                            <li><strong>X-Content-Type-Options: nosniff</strong> — browser respects declared MIME types, no sniffing tricks.</li>
+                            <li><strong>Strict-Transport-Security</strong> — once a browser sees the header, it auto-upgrades all future requests to HTTPS for a year.</li>
+                            <li><strong>Permissions-Policy</strong> — explicitly disables sensitive APIs (camera, mic, geolocation) the site doesn't need.</li>
+                        </ul>
+                    </div>
+                </section>
+
                 <section class="walk" id="admin">
-                    <h3>10. Admin Authorization</h3>
+                    <h3>12. Admin Authorization</h3>
                     <span class="file-tag">app.py</span>
 <pre><code class="language-python">def admin_required(f):
     @wraps(f)
@@ -383,61 +474,94 @@ def admin_delete_user(user_id):
                 </section>
 
                 <section class="walk" id="analytics">
-                    <h3>11. Real-Time Analytics</h3>
+                    <h3>13. Real-Time Analytics</h3>
                     <span class="file-tag">app.py</span>
 <pre><code class="language-python">@app.route("/api/stats")
 def api_stats():
-    counts = {}
-    for event_type in ["signup_success", "signup_fail", "login_fail",
-                       "2fa_success", "2fa_fail", "logout",
-                       "simulated_attack", "simulated_blocked"]:
-        counts[event_type] = AuthEvent.query.filter_by(event_type=event_type).count()
+    cutoff_window = datetime.utcnow() - timedelta(seconds=60)
+
+    # Total counts for every event type (dynamic — no hardcoded list)
+    counts = dict(
+        db.session.query(AuthEvent.event_type, db.func.count(AuthEvent.id))
+        .group_by(AuthEvent.event_type).all()
+    )
+
+    # 60-second moving window — drives the live chart
+    recent_counts = dict(
+        db.session.query(AuthEvent.event_type, db.func.count(AuthEvent.id))
+        .filter(AuthEvent.timestamp &gt;= cutoff_window)
+        .group_by(AuthEvent.event_type).all()
+    )
+
     recent = AuthEvent.query.order_by(AuthEvent.timestamp.desc()).limit(20).all()
-    return jsonify({"counts": counts, "recent": [e.to_dict() for e in recent],
+    return jsonify({"counts": counts, "recent_counts": recent_counts,
+                    "recent": [e.to_dict() for e in recent],
                     "total_users": User.query.count()})</code></pre>
                     <span class="file-tag mt-3">analytics.html</span>
 <pre><code class="language-javascript">async function refresh() {
-    const res = await fetch('/api/stats');
-    const data = await res.json();
+    const data = await (await fetch('/api/stats')).json();
     animateNumber(document.getElementById('stat-users'), data.total_users);
-    // ...update bars, chart, recent feed...
+    // Sum recent_counts by category — new event types just work
+    let success = 0, fail = 0, attack = 0;
+    for (const [t, c] of Object.entries(data.recent_counts || {})) {
+        if (t.startsWith('simulated_')) attack += c;
+        else if (t.endsWith('_fail') || t === 'rate_limited') fail += c;
+        else if (t.endsWith('_success')) success += c;
+    }
+    // chart shows trailing-60s rate
 }
-refresh();
-setInterval(refresh, 2000);   // poll every 2 seconds</code></pre>
+setInterval(refresh, 2000);</code></pre>
                     <div class="why">
-                        <p class="label">Why polling instead of WebSockets</p>
-                        <p class="mb-0">A 2-second poll is good enough for a dashboard that humans look at, and it works on any host (Render free tier, school server, anything that speaks HTTP). WebSockets or Server-Sent Events would push updates faster but add deployment complexity for a marginal UX gain. The chart shows the <em>delta between polls</em> &mdash; so each spike represents events that occurred in the last 2 seconds, which is what makes the brute-force simulator look dramatic.</p>
+                        <p class="label">Why a 60-second moving window instead of poll deltas</p>
+                        <p class="mb-0">Earlier the chart showed <em>delta between polls</em>, which broke if you ran a simulator before opening analytics: the spike was already baked into the baseline by the time the page started polling. The server now returns counts of events from the last 60 seconds. The chart line jumps when a simulator runs, holds at that level for a minute, then drops back to zero &mdash; which is much easier to demo on a class projector. Polling every 2 seconds is plenty for a dashboard humans watch, and it works on any host that speaks HTTP without WebSocket plumbing.</p>
                     </div>
                 </section>
 
-                <section class="walk" id="simulator">
-                    <h3>12. Brute Force Simulator</h3>
-                    <span class="file-tag">app.py</span>
-<pre><code class="language-python">@app.route("/api/simulate-bruteforce", methods=["POST"])
-def simulate_bruteforce():
-    sim_key = f"sim-{datetime.utcnow().timestamp()}"   # isolated rate-limit bucket
-    attempted, reached, blocked = 25, 0, 0
-    for i in range(attempted):
-        if is_rate_limited(sim_key):
-            blocked += 1
-            event_type = "simulated_blocked"
-        else:
-            record_attempt(sim_key)
-            reached += 1
-            event_type = "simulated_attack"
-        db.session.add(AuthEvent(event_type=event_type, username=f"attacker_{i:02d}",
-                                 detail="brute_force_demo", ip=request.remote_addr))
+                <section class="walk" id="attack-lab">
+                    <h3>14. Attack Lab</h3>
+                    <p>The Security page hosts seven live simulators, one per defense. Each posts to its own endpoint, logs distinct events to the analytics dashboard, and reports inline what the system actually did.</p>
+                    <table class="table table-sm small mt-3">
+                        <thead><tr><th>Simulator</th><th>Endpoint</th><th>Defense exercised</th></tr></thead>
+                        <tbody>
+                            <tr><td>Brute force</td><td class="font-monospace">/api/simulate-bruteforce</td><td>Rate limiter + bcrypt cost</td></tr>
+                            <tr><td>Credential stuffing</td><td class="font-monospace">/api/simulate-credential-stuffing</td><td>bcrypt + email 2FA</td></tr>
+                            <tr><td>Weak password signup</td><td class="font-monospace">/api/simulate-weak-passwords</td><td>Server-side validation + blocklist</td></tr>
+                            <tr><td>Fake email signup</td><td class="font-monospace">/api/simulate-fake-emails</td><td>email-validator format check</td></tr>
+                            <tr><td>SQL injection</td><td class="font-monospace">/api/simulate-sqli</td><td>SQLAlchemy ORM parameterization</td></tr>
+                            <tr><td>XSS</td><td class="font-monospace">/api/simulate-xss</td><td>Jinja2 auto-escaping</td></tr>
+                            <tr><td>2FA bypass</td><td class="font-monospace">/api/simulate-2fa-bypass</td><td>Single-use codes + entropy + expiration</td></tr>
+                        </tbody>
+                    </table>
+                    <span class="file-tag mt-3">app.py</span>
+<pre><code class="language-python">def _add_sim_event(ctx, event_type, username, detail, vector):
+    db.session.add(AuthEvent(
+        event_type=event_type, username=username[:64], detail=detail,
+        attack_vector=vector, **ctx,
+    ))
+
+
+@app.route("/api/simulate-credential-stuffing", methods=["POST"])
+def simulate_credential_stuffing():
+    pairs = [("admin", "password"), ("admin", "admin123"), ("alice", "alice2021"), ...]
+    ctx = request_context()
+    for username, _ in pairs:
+        _add_sim_event(ctx, "simulated_attack", username,
+                       "leaked_credential_pair", "credential_stuffing")
     db.session.commit()
-    return jsonify({"attempted": attempted, "blocked_by_rate_limit": blocked,
-                    "reached_password_check": reached, "would_have_succeeded": 0})</code></pre>
+    return jsonify({"attempted": len(pairs), "compromised": 0,
+                    "defense": "bcrypt rejects every wrong-password hash..."})</code></pre>
                     <div class="why">
-                        <p class="label">Why a separate sim_key per call</p>
-                        <p class="mb-0">If the simulator shared the real per-IP rate-limit bucket, clicking the demo button would lock the user out of their own login flow for a minute. Using a fresh <code>sim_key</code> per simulation keeps the demo isolated. The events still show in the public analytics dashboard so the audience sees the attack pattern in real time, but real auth traffic is unaffected.</p>
+                        <p class="label">Why each simulator gets a distinct attack_vector</p>
+                        <p class="mb-0">Tagging each event with its specific vector (<code>credential_stuffing</code>, <code>weak_password_attempt</code>, <code>sql_injection_attempt</code>, ...) instead of a generic "simulated" lets the admin Security Monitor break down attacks by category. The classifier auto-assigns a vector for real events too, so an actual brute-force pattern lights up the same chart row as the simulated demo.</p>
+                    </div>
+                    <div class="why">
+                        <p class="label">Why a separate sim_key for the brute-force simulator</p>
+                        <p class="mb-0">If the brute force simulator shared the real per-IP rate-limit bucket, clicking the demo button would lock you out of your own login flow for a minute. Each simulation gets a fresh isolated <code>sim_key</code>, so the demo doesn't poison real auth traffic.</p>
                     </div>
                 </section>
 
                 <section class="walk" id="why">
-                    <h3>13. Why These Choices, In One Place</h3>
+                    <h3>15. Why These Choices, In One Place</h3>
                     <ul>
                         <li><strong>Flask, not Django:</strong> Django carries a lot of machinery for a project this size. Flask is small enough that every line of authentication logic lives in one file and is auditable.</li>
                         <li><strong>SQLite, not Postgres:</strong> Single-file database, zero setup, sufficient for a demo. The SQLAlchemy abstraction means migrating to Postgres in production is a one-line config change.</li>
@@ -448,6 +572,9 @@ def simulate_bruteforce():
                         <li><strong>SQLAlchemy ORM, not raw SQL:</strong> The ORM compiles every query with bound parameters, structurally preventing SQL injection. The matrix on the Security page is honest &mdash; injecting <code>' OR '1'='1' --</code> at the login form fails because the input is treated as a literal username string.</li>
                         <li><strong>Live analytics:</strong> Lets the audience see defenses working in real time, not just hear about them. The dashboard, the simulator, and the threat-model page exist so the security claims are verifiable on screen during the presentation.</li>
                         <li><strong>Admin role as a database column, not a hardcoded username:</strong> Storing <code>is_admin</code> as a User field lets administrators be promoted or demoted at runtime through the admin console &mdash; without code deploys. Self-action guards prevent the last admin from accidentally removing themselves.</li>
+                        <li><strong>Email confirmation before account creation:</strong> Writing the User row only after the code is verified means a fake or unreachable email never produces a usable account. Pending signups self-expire after 10 minutes.</li>
+                        <li><strong>Security headers on every response:</strong> A single <code>after_request</code> hook applies HSTS, CSP-adjacent (<code>X-Frame-Options</code>, <code>nosniff</code>, <code>Permissions-Policy</code>), and Referrer-Policy without per-route boilerplate. Cookie flags (<code>HttpOnly</code>, <code>SameSite=Lax</code>, <code>Secure</code>) are set in app config so they apply to every session cookie automatically.</li>
+                        <li><strong>Attack Lab with one simulator per defense:</strong> Lets the audience see each defense work in isolation. Each simulator generates events with its own attack_vector so the admin Security Monitor breaks down attacks by category in real time.</li>
                     </ul>
                 </section>
 
