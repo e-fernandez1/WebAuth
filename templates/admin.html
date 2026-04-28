@@ -45,14 +45,110 @@
         </div>
 
         <ul class="nav nav-tabs mb-4" role="tablist">
-            <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#users-tab">Users</button></li>
+            <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#monitor-tab">Security Monitor</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#users-tab">Users</button></li>
             <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#events-tab">Events</button></li>
             <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tools-tab">Tools</button></li>
         </ul>
 
         <div class="tab-content">
 
-            <div class="tab-pane fade show active" id="users-tab">
+            <div class="tab-pane fade show active" id="monitor-tab">
+                <div class="row g-3">
+                    <div class="col-lg-5">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="mb-3">Attack Vectors Detected</h5>
+                                {% if vectors %}
+                                    {% for v in vectors %}
+                                    <div class="mb-3">
+                                        <div class="d-flex justify-content-between small mb-1">
+                                            <span class="font-monospace">{{ v.vector }}</span>
+                                            <span class="text-muted">{{ v.count }}</span>
+                                        </div>
+                                        <div class="progress" style="height: 10px;">
+                                            <div class="progress-bar
+                                                {% if 'brute_force' in v.vector %}bg-danger
+                                                {% elif 'credential_stuffing' in v.vector %}bg-warning
+                                                {% elif 'simulated' in v.vector %}bg-info
+                                                {% else %}bg-secondary{% endif %}"
+                                                style="width: {{ (v.count / vectors[0].count * 100) | round }}%"></div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <p class="text-muted small mb-0">No attack-classified events yet. Run the brute force simulator on the Security page to populate this view.</p>
+                                {% endif %}
+
+                                <hr class="my-4">
+                                <h6 class="mb-2 small text-uppercase text-muted" style="letter-spacing: 0.12em;">What these mean</h6>
+                                <ul class="small text-muted mb-0">
+                                    <li><strong>brute_force</strong> &mdash; many failed logins for the same username from one IP</li>
+                                    <li><strong>credential_stuffing</strong> &mdash; failed logins across multiple usernames from one IP</li>
+                                    <li><strong>2fa_bypass_attempt</strong> &mdash; wrong 6-digit code submitted</li>
+                                    <li><strong>signup_abuse</strong> &mdash; bad email, weak password, duplicate, etc.</li>
+                                    <li><strong>simulated_brute_force</strong> &mdash; from the demo button</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-7">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="mb-3">Recent Connections (last 7 days)</h5>
+                                {% if connections %}
+                                <div class="table-responsive">
+                                <table class="table table-sm align-middle small">
+                                    <thead class="text-muted small text-uppercase">
+                                        <tr>
+                                            <th>IP</th>
+                                            <th>Location</th>
+                                            <th>Browser / OS</th>
+                                            <th class="text-end">Events</th>
+                                            <th class="text-end">Attacks</th>
+                                            <th>Last seen</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for c in connections %}
+                                        <tr>
+                                            <td class="font-monospace">{{ c.ip }}</td>
+                                            <td>
+                                                {% if c.country %}
+                                                    <span>{{ c.city }}{% if c.city and c.country %}, {% endif %}{{ c.country }}</span>
+                                                {% else %}
+                                                    <span class="text-muted">—</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <div>{{ c.browser or '—' }}</div>
+                                                <div class="text-muted">{{ c.os }} {% if c.device %}<span class="badge bg-secondary ms-1">{{ c.device }}</span>{% endif %}</div>
+                                            </td>
+                                            <td class="text-end font-monospace">{{ c.total }}</td>
+                                            <td class="text-end">
+                                                {% if c.attacks > 0 %}
+                                                    <span class="badge bg-danger">{{ c.attacks }}</span>
+                                                {% else %}
+                                                    <span class="text-muted font-monospace">0</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="text-muted font-monospace">{{ c.last_seen.strftime('%m-%d %H:%M') }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                                </div>
+                                {% else %}
+                                    <p class="text-muted small mb-0">No connections recorded yet.</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="users-tab">
                 <div class="card">
                     <div class="card-body">
                         <h5 class="mb-3">All Users</h5>
@@ -116,19 +212,21 @@
                         <div class="table-responsive">
                         <table class="table table-sm align-middle small">
                             <thead class="text-muted small text-uppercase">
-                                <tr><th>Time</th><th>Event</th><th>User</th><th>Detail</th><th>IP</th></tr>
+                                <tr><th>Time</th><th>Event</th><th>Vector</th><th>User</th><th>IP</th><th>Where</th><th>Browser</th></tr>
                             </thead>
                             <tbody>
                                 {% for e in events %}
                                 <tr>
                                     <td class="font-monospace text-muted">{{ e.timestamp.strftime('%H:%M:%S') }}</td>
                                     <td><span class="badge bg-secondary">{{ e.event_type }}</span></td>
+                                    <td>{% if e.attack_vector %}<span class="badge bg-danger">{{ e.attack_vector }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
                                     <td>{{ e.username or '—' }}</td>
-                                    <td class="text-muted">{{ e.detail or '' }}</td>
                                     <td class="text-muted font-monospace">{{ e.ip or '' }}</td>
+                                    <td class="text-muted">{% if e.country %}{{ e.city }}{% if e.city and e.country %}, {% endif %}{{ e.country }}{% endif %}</td>
+                                    <td class="text-muted">{{ e.browser or '' }}</td>
                                 </tr>
                                 {% else %}
-                                    <tr><td colspan="5" class="text-center text-muted py-4">No events match.</td></tr>
+                                    <tr><td colspan="7" class="text-center text-muted py-4">No events match.</td></tr>
                                 {% endfor %}
                             </tbody>
                         </table>

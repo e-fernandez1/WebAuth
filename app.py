@@ -1,7 +1,9 @@
+import json
 import os
 import re
 import smtplib
 import secrets
+import urllib.request
 from collections import defaultdict
 from datetime import datetime, timedelta
 from email.message import EmailMessage
@@ -13,8 +15,88 @@ from dotenv import load_dotenv
 from email_validator import EmailNotValidError, validate_email
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_login import LoginManager, current_user, login_required, login_user, logout_user
+from sqlalchemy import inspect, text
+from user_agents import parse as parse_ua
 
 from models import AuthEvent, EmailCode, PendingSignup, User, db
+
+
+GEO_CACHE = {}
+GEO_CACHE_TTL = timedelta(hours=6)
+
+
+def lookup_geo(ip):
+    if not ip:
+        return ("", "")
+    if ip in ("127.0.0.1", "localhost", "::1") or ip.startswith("192.168.") or ip.startswith("10."):
+        return ("Local", "Local")
+    cached = GEO_CACHE.get(ip)
+    if cached and cached[2] > datetime.utcnow():
+        return cached[0], cached[1]
+    try:
+        url = f"http://ip-api.com/json/{ip}?fields=status,country,city"
+        with urllib.request.urlopen(url, timeout=1.5) as r:
+            data = json.loads(r.read().decode("utf-8"))
+            if data.get("status") == "success":
+                country = data.get("country", "") or ""
+                city = data.get("city", "") or ""
+                GEO_CACHE[ip] = (country, city, datetime.utcnow() + GEO_CACHE_TTL)
+                return country, city
+    except Exception:
+        pass
+    GEO_CACHE[ip] = ("", "", datetime.utcnow() + timedelta(minutes=10))
+    return ("", "")
+
+
+def parse_user_agent(ua_string):
+    if not ua_string:
+        return ("", "", "")
+    try:
+        ua = parse_ua(ua_string)
+        browser = f"{ua.browser.family} {ua.browser.version_string}".strip()
+        os_family = f"{ua.os.family} {ua.os.version_string}".strip()
+        if ua.is_mobile:
+            device = "mobile"
+        elif ua.is_tablet:
+            device = "tablet"
+        elif ua.is_bot:
+            device = "bot"
+        else:
+            device = "desktop"
+        return (browser[:64], os_family[:64], device)
+    except Exception:
+        return ("", "", "")
+
+
+def classify_attack_vector(event_type, ip):
+    """Best-effort classification of an event into an attack-vector bucket."""
+    if event_type == "rate_limited":
+        return "brute_force"
+    if event_type in ("simulated_attack", "simulated_blocked"):
+        return "simulated_brute_force"
+    if event_type == "2fa_fail":
+        return "2fa_bypass_attempt"
+    if event_type == "signup_confirm_fail":
+        return "signup_confirmation_abuse"
+    if event_type == "signup_fail":
+        return "signup_abuse"
+    if event_type == "login_fail" and ip:
+        cutoff = datetime.utcnow() - timedelta(minutes=10)
+        recent = (
+            db.session.query(AuthEvent.username)
+            .filter(
+                AuthEvent.event_type == "login_fail",
+                AuthEvent.ip == ip,
+                AuthEvent.timestamp > cutoff,
+            )
+            .all()
+        )
+        if len(recent) >= 3:
+            distinct_users = len({r[0] for r in recent if r[0]})
+            if distinct_users >= 2:
+                return "credential_stuffing"
+            return "brute_force"
+    return None
 
 
 def admin_required(f):
@@ -109,8 +191,35 @@ def auto_seed_if_empty():
     print(f"[AUTO-SEED] Created {len(seed_users)} test users (admin + 4 regular).")
 
 
+def ensure_columns():
+    """Add missing columns to existing SQLite tables.
+
+    db.create_all() creates new tables but does not add columns to existing ones,
+    so this helper bridges the gap when AuthEvent gains new fields.
+    """
+    inspector = inspect(db.engine)
+    if "auth_event" not in inspector.get_table_names():
+        return
+    existing = {c["name"] for c in inspector.get_columns("auth_event")}
+    additions = [
+        ("user_agent",    "VARCHAR(255)"),
+        ("browser",       "VARCHAR(64)"),
+        ("os_family",     "VARCHAR(64)"),
+        ("device",        "VARCHAR(32)"),
+        ("country",       "VARCHAR(64)"),
+        ("city",          "VARCHAR(64)"),
+        ("attack_vector", "VARCHAR(32)"),
+    ]
+    for col_name, col_type in additions:
+        if col_name not in existing:
+            db.session.execute(text(f"ALTER TABLE auth_event ADD COLUMN {col_name} {col_type}"))
+            print(f"[MIGRATE] Added column auth_event.{col_name}")
+    db.session.commit()
+
+
 with app.app_context():
     db.create_all()
+    ensure_columns()
     auto_seed_if_empty()
 
 
@@ -146,11 +255,23 @@ def validate_password(pw):
 
 
 def log_event(event_type, username=None, detail=None):
+    ip = request.remote_addr
+    ua_string = request.headers.get("User-Agent", "")
+    browser, os_family, device = parse_user_agent(ua_string)
+    country, city = lookup_geo(ip)
+    vector = classify_attack_vector(event_type, ip)
     event = AuthEvent(
         event_type=event_type,
         username=username,
         detail=detail,
-        ip=request.remote_addr,
+        ip=ip,
+        user_agent=ua_string[:255],
+        browser=browser,
+        os_family=os_family,
+        device=device,
+        country=country,
+        city=city,
+        attack_vector=vector,
     )
     db.session.add(event)
     db.session.commit()
@@ -518,8 +639,61 @@ def admin_home():
             EmailCode.expires_at > datetime.utcnow(),
         ).count(),
     }
+
+    # Attack-vector breakdown
+    vector_rows = (
+        db.session.query(AuthEvent.attack_vector, db.func.count(AuthEvent.id))
+        .filter(AuthEvent.attack_vector.isnot(None))
+        .group_by(AuthEvent.attack_vector)
+        .all()
+    )
+    vectors = sorted(
+        [{"vector": v or "uncategorized", "count": c} for v, c in vector_rows],
+        key=lambda x: x["count"],
+        reverse=True,
+    )
+
+    # Connection summary grouped by IP
+    cutoff = datetime.utcnow() - timedelta(days=7)
+    connection_rows = (
+        db.session.query(
+            AuthEvent.ip,
+            db.func.count(AuthEvent.id).label("total"),
+            db.func.max(AuthEvent.timestamp).label("last_seen"),
+            db.func.max(AuthEvent.country).label("country"),
+            db.func.max(AuthEvent.city).label("city"),
+            db.func.max(AuthEvent.browser).label("browser"),
+            db.func.max(AuthEvent.os_family).label("os_family"),
+            db.func.max(AuthEvent.device).label("device"),
+        )
+        .filter(AuthEvent.timestamp >= cutoff, AuthEvent.ip.isnot(None))
+        .group_by(AuthEvent.ip)
+        .order_by(db.func.max(AuthEvent.timestamp).desc())
+        .limit(40)
+        .all()
+    )
+    connections = []
+    for row in connection_rows:
+        attack_count = AuthEvent.query.filter(
+            AuthEvent.ip == row.ip,
+            AuthEvent.attack_vector.isnot(None),
+            AuthEvent.timestamp >= cutoff,
+        ).count()
+        connections.append({
+            "ip": row.ip,
+            "total": row.total,
+            "attacks": attack_count,
+            "last_seen": row.last_seen,
+            "country": row.country or "",
+            "city": row.city or "",
+            "browser": row.browser or "",
+            "os": row.os_family or "",
+            "device": row.device or "",
+        })
+
     return render_template("admin.html", users=users, events=events,
-                           counts=counts, current_filter=event_filter)
+                           counts=counts, current_filter=event_filter,
+                           vectors=vectors, connections=connections)
 
 
 @app.route("/admin/user/<int:user_id>/delete", methods=["POST"])
