@@ -53,7 +53,8 @@
             <div class="col-lg-7">
                 <div class="card mb-4">
                     <div class="card-body">
-                        <h5 class="mb-3">Events Over Time</h5>
+                        <h5 class="mb-1">Events in the Last 60 Seconds</h5>
+                        <p class="small text-muted mb-3">Each line shows how many events of that type occurred in the trailing 60-second window. Run a simulator, watch the line jump, then drop back to zero a minute later.</p>
                         <canvas id="timeline-chart" height="100"></canvas>
                     </div>
                 </div>
@@ -145,8 +146,6 @@ const timeline = new Chart(timelineCtx, {
 });
 
 const history = { labels: [], success: [], fail: [], attack: [] };
-let lastSnapshot = null;
-let lastPollTime = Date.now();
 
 async function refresh() {
     const status = document.getElementById('status');
@@ -181,36 +180,31 @@ async function refresh() {
                 </div>`);
         }
 
-        // Timeline (delta since last poll) — sum across event types so new ones just work
+        // Timeline shows events in the trailing 60-second window from the server.
+        // Sum any matching event type so new categories work automatically.
+        const recent = data.recent_counts || {};
+        let successWin = 0, failWin = 0, attackWin = 0;
+        for (const [type, count] of Object.entries(recent)) {
+            if (type.startsWith('simulated_')) attackWin += count;
+            else if (type.endsWith('_fail') || type === 'rate_limited') failWin += count;
+            else if (type.endsWith('_success')) successWin += count;
+        }
         const now = new Date().toLocaleTimeString();
-        let successTotal = 0, failTotal = 0, attackTotal = 0;
-        for (const [type, count] of Object.entries(data.counts)) {
-            if (type.startsWith('simulated_')) {
-                attackTotal += count;
-            } else if (type.endsWith('_fail') || type === 'rate_limited') {
-                failTotal += count;
-            } else if (type.endsWith('_success')) {
-                successTotal += count;
-            }
+        history.labels.push(now);
+        history.success.push(successWin);
+        history.fail.push(failWin);
+        history.attack.push(attackWin);
+        if (history.labels.length > 30) {
+            history.labels.shift();
+            history.success.shift();
+            history.fail.shift();
+            history.attack.shift();
         }
-        if (lastSnapshot) {
-            history.labels.push(now);
-            history.success.push(Math.max(0, successTotal - lastSnapshot.success));
-            history.fail.push(Math.max(0, failTotal - lastSnapshot.fail));
-            history.attack.push(Math.max(0, attackTotal - lastSnapshot.attack));
-            if (history.labels.length > 20) {
-                history.labels.shift();
-                history.success.shift();
-                history.fail.shift();
-                history.attack.shift();
-            }
-            timeline.data.labels = history.labels;
-            timeline.data.datasets[0].data = history.success;
-            timeline.data.datasets[1].data = history.fail;
-            timeline.data.datasets[2].data = history.attack;
-            timeline.update('none');
-        }
-        lastSnapshot = { success: successTotal, fail: failTotal, attack: attackTotal };
+        timeline.data.labels = history.labels;
+        timeline.data.datasets[0].data = history.success;
+        timeline.data.datasets[1].data = history.fail;
+        timeline.data.datasets[2].data = history.attack;
+        timeline.update('none');
 
         // Recent feed
         const feed = document.getElementById('event-feed');

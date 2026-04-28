@@ -274,6 +274,33 @@ section.bg-light {
     border-radius: 6px;
 }
 
+/* Tables */
+.table {
+    color: var(--text);
+    background: transparent;
+    border-color: var(--border);
+    --bs-table-bg: transparent;
+    --bs-table-color: var(--text);
+    --bs-table-border-color: var(--border);
+    --bs-table-striped-bg: var(--surface);
+    --bs-table-hover-bg: var(--surface-2);
+}
+.table > :not(caption) > * > * {
+    background-color: transparent !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+    box-shadow: none !important;
+}
+.table thead th {
+    background: var(--surface-2) !important;
+    color: var(--text-muted) !important;
+    border-bottom: 1px solid var(--border) !important;
+    font-weight: 600;
+}
+.table tbody tr:hover > * {
+    background-color: var(--surface-2) !important;
+}
+
 /* List groups */
 .list-group {
     background: transparent;

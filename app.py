@@ -918,9 +918,10 @@ def admin_clear_events():
 
 @app.route("/api/stats")
 def api_stats():
-    cutoff = datetime.utcnow() - timedelta(hours=24)
+    cutoff_24h = datetime.utcnow() - timedelta(hours=24)
+    cutoff_window = datetime.utcnow() - timedelta(seconds=60)
 
-    # Dynamic count of every event type that has rows
+    # Total count of every event type
     rows = (
         db.session.query(AuthEvent.event_type, db.func.count(AuthEvent.id))
         .group_by(AuthEvent.event_type)
@@ -928,21 +929,33 @@ def api_stats():
     )
     counts = {event_type: count for event_type, count in rows}
 
-    # Ensure every key the frontend expects exists, even if zero
-    for et in (
+    # Count of events in the last 60 seconds (drives the live chart)
+    recent_rows = (
+        db.session.query(AuthEvent.event_type, db.func.count(AuthEvent.id))
+        .filter(AuthEvent.timestamp >= cutoff_window)
+        .group_by(AuthEvent.event_type)
+        .all()
+    )
+    recent_counts = {event_type: count for event_type, count in recent_rows}
+
+    # Ensure expected keys exist, even when zero
+    expected = (
         "signup_success", "signup_fail", "signup_pending", "signup_confirm_fail",
         "login_success_pending_2fa", "login_fail", "rate_limited",
         "2fa_success", "2fa_fail", "logout", "admin_action",
         "simulated_attack", "simulated_blocked",
-    ):
+    )
+    for et in expected:
         counts.setdefault(et, 0)
+        recent_counts.setdefault(et, 0)
 
     recent = AuthEvent.query.order_by(AuthEvent.timestamp.desc()).limit(20).all()
-    last_hour = AuthEvent.query.filter(AuthEvent.timestamp >= cutoff).count()
+    last_hour = AuthEvent.query.filter(AuthEvent.timestamp >= cutoff_24h).count()
     user_count = User.query.count()
 
     return jsonify({
         "counts": counts,
+        "recent_counts": recent_counts,
         "recent": [e.to_dict() for e in recent],
         "events_last_24h": last_hour,
         "total_users": user_count,

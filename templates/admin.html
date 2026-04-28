@@ -84,10 +84,13 @@
                                 <h6 class="mb-2 small text-uppercase text-muted" style="letter-spacing: 0.12em;">What these mean</h6>
                                 <ul class="small text-muted mb-0">
                                     <li><strong>brute_force</strong> &mdash; many failed logins for the same username from one IP</li>
-                                    <li><strong>credential_stuffing</strong> &mdash; failed logins across multiple usernames from one IP</li>
+                                    <li><strong>credential_stuffing</strong> &mdash; logins tried across multiple usernames from one IP</li>
+                                    <li><strong>weak_password_attempt</strong> &mdash; signup with a password that fails server-side rules</li>
+                                    <li><strong>fake_email_attempt</strong> &mdash; signup with a malformed or undeliverable email</li>
+                                    <li><strong>sql_injection_attempt</strong> &mdash; SQL payload submitted as a username</li>
+                                    <li><strong>xss_attempt</strong> &mdash; HTML/JS payload submitted to a form field</li>
                                     <li><strong>2fa_bypass_attempt</strong> &mdash; wrong 6-digit code submitted</li>
-                                    <li><strong>signup_abuse</strong> &mdash; bad email, weak password, duplicate, etc.</li>
-                                    <li><strong>simulated_brute_force</strong> &mdash; from the demo button</li>
+                                    <li><strong>simulated_brute_force</strong> &mdash; from the Attack Lab brute force demo</li>
                                 </ul>
                             </div>
                         </div>

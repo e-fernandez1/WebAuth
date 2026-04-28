@@ -299,93 +299,195 @@
             </div>
         </div>
 
-        <!-- Live simulator -->
-        <div class="card mb-5">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-3">
-                    <div>
-                        <h4 class="mb-1">Live Brute Force Simulation</h4>
-                        <p class="text-muted small mb-0">Fires 25 fake login attempts at the system. Watch the rate limiter block the attack and the analytics dashboard light up.</p>
-                    </div>
-                    <button id="run-sim" class="btn btn-warning">Run Brute Force Simulation</button>
-                </div>
+        <!-- Attack Lab -->
+        <h4 class="mb-2">Attack Lab</h4>
+        <p class="text-muted mb-4">Run live attacks against the production system and watch each defense block them. Every simulation logs distinct events to the analytics dashboard so you can see attack patterns in real time.</p>
 
-                <div id="sim-results" class="d-none">
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-3">
-                            <div class="stat-tile p-3 rounded" style="background: var(--surface-2); border: 1px solid var(--border);">
-                                <p class="text-uppercase small text-muted mb-1">Attempted</p>
-                                <h3 id="sim-attempted" class="mb-0">0</h3>
-                            </div>
+        <div class="row g-3 mb-4">
+            <!-- Brute Force (existing, expanded display) -->
+            <div class="col-lg-6">
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <span class="badge bg-danger mb-1">Brute Force</span>
+                            <h5 class="mb-1">Password Spraying</h5>
                         </div>
-                        <div class="col-md-3">
-                            <div class="stat-tile p-3 rounded" style="background: var(--surface-2); border: 1px solid var(--border);">
-                                <p class="text-uppercase small text-muted mb-1">Blocked</p>
-                                <h3 id="sim-blocked" class="mb-0 text-danger">0</h3>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="stat-tile p-3 rounded" style="background: var(--surface-2); border: 1px solid var(--border);">
-                                <p class="text-uppercase small text-muted mb-1">Reached Hash Check</p>
-                                <h3 id="sim-reached" class="mb-0 text-warning">0</h3>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="stat-tile p-3 rounded" style="background: var(--surface-2); border: 1px solid var(--border);">
-                                <p class="text-uppercase small text-muted mb-1">Account Compromised</p>
-                                <h3 id="sim-success" class="mb-0 text-success">0</h3>
-                            </div>
-                        </div>
+                        <button class="btn btn-sm btn-warning sim-btn" data-sim="bruteforce">Run</button>
                     </div>
-                    <div class="progress mb-2" style="height: 24px;">
-                        <div id="sim-bar-blocked" class="progress-bar bg-danger" style="width: 0%">Blocked</div>
-                        <div id="sim-bar-reached" class="progress-bar bg-warning" style="width: 0%">Reached check</div>
+                    <p class="small text-muted mb-2">Fires 25 rapid login attempts. Rate limiter blocks the surge after 5; bcrypt slows the rest.</p>
+                    <div class="sim-result d-none small" id="result-bruteforce"></div>
+                </div></div>
+            </div>
+
+            <!-- Credential Stuffing -->
+            <div class="col-lg-6">
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <span class="badge bg-danger mb-1">Credential Stuffing</span>
+                            <h5 class="mb-1">Leaked-Password Replay</h5>
+                        </div>
+                        <button class="btn btn-sm btn-warning sim-btn" data-sim="credential-stuffing">Run</button>
                     </div>
-                    <p class="small text-muted mt-3">
-                        Of <strong id="sim-total">25</strong> attack attempts, the rate limiter blocked
-                        <span id="sim-blocked-text">0</span> outright. The remaining attempts hit the
-                        password check, where bcrypt-hashed passwords with high entropy made guessing
-                        infeasible. Account compromise rate: <strong>0/25</strong>.
-                        <a href="{{ url_for('analytics') }}">View the spike on analytics &rarr;</a>
-                    </p>
-                </div>
+                    <p class="small text-muted mb-2">Replays 10 username/password pairs from public breach lists. bcrypt rejects bad hashes; 2FA blocks any that match.</p>
+                    <div class="sim-result d-none small" id="result-credential-stuffing"></div>
+                </div></div>
+            </div>
+
+            <!-- Weak Passwords -->
+            <div class="col-lg-6">
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <span class="badge bg-warning mb-1">Weak Password</span>
+                            <h5 class="mb-1">Bad-Password Signup</h5>
+                        </div>
+                        <button class="btn btn-sm btn-warning sim-btn" data-sim="weak-passwords">Run</button>
+                    </div>
+                    <p class="small text-muted mb-2">Submits 10 weak passwords like "password" and "qwerty". Server-side validation rejects each one with a specific reason.</p>
+                    <div class="sim-result d-none small" id="result-weak-passwords"></div>
+                </div></div>
+            </div>
+
+            <!-- Fake Emails -->
+            <div class="col-lg-6">
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <span class="badge bg-warning mb-1">Fake Email</span>
+                            <h5 class="mb-1">Junk-Email Signup</h5>
+                        </div>
+                        <button class="btn btn-sm btn-warning sim-btn" data-sim="fake-emails">Run</button>
+                    </div>
+                    <p class="small text-muted mb-2">Tries 8 malformed addresses like <code>asdf@asdf</code> or <code>user@@x.com</code>. Each fails format validation before any DB write.</p>
+                    <div class="sim-result d-none small" id="result-fake-emails"></div>
+                </div></div>
+            </div>
+
+            <!-- SQL Injection -->
+            <div class="col-lg-6">
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <span class="badge bg-info text-dark mb-1">Data</span>
+                            <h5 class="mb-1">SQL Injection</h5>
+                        </div>
+                        <button class="btn btn-sm btn-warning sim-btn" data-sim="sqli">Run</button>
+                    </div>
+                    <p class="small text-muted mb-2">Submits 8 classic injection payloads (<code>' OR '1'='1</code>, <code>'; DROP TABLE user; --</code>). All hit the ORM as literal strings.</p>
+                    <div class="sim-result d-none small" id="result-sqli"></div>
+                </div></div>
+            </div>
+
+            <!-- XSS -->
+            <div class="col-lg-6">
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <span class="badge bg-info text-dark mb-1">Data</span>
+                            <h5 class="mb-1">Cross-Site Scripting (XSS)</h5>
+                        </div>
+                        <button class="btn btn-sm btn-warning sim-btn" data-sim="xss">Run</button>
+                    </div>
+                    <p class="small text-muted mb-2">Submits 6 payloads with <code>&lt;script&gt;</code> tags and event handlers. Jinja escapes them all into inert text.</p>
+                    <div class="sim-result d-none small" id="result-xss"></div>
+                </div></div>
+            </div>
+
+            <!-- 2FA Bypass -->
+            <div class="col-lg-12">
+                <div class="card"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <span class="badge bg-primary mb-1">2FA Bypass</span>
+                            <h5 class="mb-1">Random-Code Guessing</h5>
+                        </div>
+                        <button class="btn btn-sm btn-warning sim-btn" data-sim="2fa-bypass">Run</button>
+                    </div>
+                    <p class="small text-muted mb-2">Simulates an attacker who has the password and tries 12 random 6-digit codes. With a 1-in-1,000,000 hit rate per guess and 5-minute expiration windows, the math doesn't work in their favor.</p>
+                    <div class="sim-result d-none small" id="result-2fa-bypass"></div>
+                </div></div>
             </div>
         </div>
+
+        <p class="text-muted small">After running any simulation, switch to <a href="{{ url_for('analytics') }}">Live Analytics</a> or <a href="{{ url_for('admin_home') }}">Admin → Security Monitor</a> (admins only) to see the events appear in real time, classified by attack vector.</p>
 
     </div>
 </section>
 
 <script>
-document.getElementById('run-sim').addEventListener('click', async (e) => {
-    const btn = e.currentTarget;
-    btn.disabled = true;
-    btn.textContent = 'Running...';
-    try {
-        const res = await fetch('/api/simulate-bruteforce', { method: 'POST' });
-        const data = await res.json();
-        document.getElementById('sim-results').classList.remove('d-none');
+const SIM_DEFS = {
+    'bruteforce': {
+        endpoint: '/api/simulate-bruteforce',
+        render: d => `
+            <div class="d-flex gap-3 flex-wrap">
+                <span><strong>${d.attempted}</strong> attempted</span>
+                <span class="text-danger"><strong>${d.blocked_by_rate_limit}</strong> blocked by rate limiter</span>
+                <span class="text-warning"><strong>${d.reached_password_check}</strong> reached bcrypt check</span>
+                <span class="text-success"><strong>${d.would_have_succeeded}</strong> compromised</span>
+            </div>
+            <div class="text-muted mt-2">Rate limiter + bcrypt cost 12 made guessing infeasible.</div>
+        `,
+    },
+    'credential-stuffing': {
+        endpoint: '/api/simulate-credential-stuffing',
+        render: d => `
+            <div><strong>${d.attempted}</strong> leaked pairs replayed &middot; <strong class="text-success">${d.compromised}</strong> compromised</div>
+            <div class="text-muted mt-2">${d.defense}</div>`,
+    },
+    'weak-passwords': {
+        endpoint: '/api/simulate-weak-passwords',
+        render: d => `
+            <div><strong>${d.attempted}</strong> weak passwords attempted &middot; <strong class="text-danger">${d.rejected}</strong> rejected by server</div>
+            <div class="text-muted mt-2">${d.defense}</div>`,
+    },
+    'fake-emails': {
+        endpoint: '/api/simulate-fake-emails',
+        render: d => `
+            <div><strong>${d.attempted}</strong> junk emails submitted &middot; <strong class="text-danger">${d.rejected}</strong> rejected</div>
+            <div class="text-muted mt-2">${d.defense}</div>`,
+    },
+    'sqli': {
+        endpoint: '/api/simulate-sqli',
+        render: d => `
+            <div><strong>${d.attempted}</strong> injection payloads &middot; <strong class="text-success">${d.successful}</strong> succeeded</div>
+            <div class="text-muted mt-2">${d.defense}</div>`,
+    },
+    'xss': {
+        endpoint: '/api/simulate-xss',
+        render: d => `
+            <div><strong>${d.attempted}</strong> XSS payloads submitted &middot; <strong class="text-success">${d.executed}</strong> executed</div>
+            <div class="text-muted mt-2">${d.defense}</div>`,
+    },
+    '2fa-bypass': {
+        endpoint: '/api/simulate-2fa-bypass',
+        render: d => `
+            <div><strong>${d.attempted}</strong> random codes tried &middot; <strong class="text-success">${d.successful}</strong> matched</div>
+            <div class="text-muted mt-2">${d.defense}</div>`,
+    },
+};
 
-        const tick = (id, target) => {
-            const el = document.getElementById(id);
-            let n = 0;
-            const step = () => { if (n < target) { n++; el.textContent = n; requestAnimationFrame(step); } };
-            step();
-        };
-        tick('sim-attempted', data.attempted);
-        tick('sim-blocked', data.blocked_by_rate_limit);
-        tick('sim-reached', data.reached_password_check);
-        tick('sim-success', data.would_have_succeeded);
-
-        const blockedPct = (data.blocked_by_rate_limit / data.attempted) * 100;
-        const reachedPct = (data.reached_password_check / data.attempted) * 100;
-        document.getElementById('sim-bar-blocked').style.width = blockedPct + '%';
-        document.getElementById('sim-bar-reached').style.width = reachedPct + '%';
-        document.getElementById('sim-total').textContent = data.attempted;
-        document.getElementById('sim-blocked-text').textContent = data.blocked_by_rate_limit;
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'Run Brute Force Simulation';
-    }
+document.querySelectorAll('.sim-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const key = btn.dataset.sim;
+        const def = SIM_DEFS[key];
+        const target = document.getElementById('result-' + key);
+        btn.disabled = true;
+        const original = btn.textContent;
+        btn.textContent = 'Running...';
+        try {
+            const res = await fetch(def.endpoint, { method: 'POST' });
+            const data = await res.json();
+            target.innerHTML = def.render(data);
+            target.classList.remove('d-none');
+        } catch (e) {
+            target.innerHTML = '<span class="text-danger">Failed: ' + e + '</span>';
+            target.classList.remove('d-none');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = original;
+        }
+    });
 });
 </script>
 {% endblock %}
