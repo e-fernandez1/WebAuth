@@ -416,6 +416,43 @@
 </section>
 
 <script>
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => (
+        {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]
+    ));
+}
+
+function outcomeBadge(outcome) {
+    const colors = {
+        'BLOCKED': 'bg-danger', 'REJECTED': 'bg-danger',
+        'SAFE': 'bg-success', 'ESCAPED': 'bg-success',
+        'REACHED': 'bg-warning', 'ACCEPTED': 'bg-success',
+        'MATCHED': 'bg-danger',
+    };
+    return `<span class="badge ${colors[outcome] || 'bg-secondary'}" style="min-width: 78px;">${escapeHtml(outcome)}</span>`;
+}
+
+function renderLog(log) {
+    if (!log || !log.length) return '';
+    const rows = log.map(e => `
+        <div class="d-flex align-items-start gap-2 mb-2 small font-monospace" style="line-height: 1.5;">
+            ${outcomeBadge(e.outcome)}
+            <code class="text-warning text-break" style="flex: 0 0 auto; max-width: 40%;">${escapeHtml(e.input)}</code>
+            <span class="text-muted text-break" style="flex: 1;">${escapeHtml(e.detail)}</span>
+        </div>
+    `).join('');
+    return `
+        <details class="mt-3">
+            <summary class="small text-muted" style="cursor: pointer; user-select: none;">
+                ▸ Show what happened to each attempt (${log.length})
+            </summary>
+            <div class="mt-3 p-3" style="background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; max-height: 320px; overflow-y: auto;">
+                ${rows}
+            </div>
+        </details>
+    `;
+}
+
 const SIM_DEFS = {
     'bruteforce': {
         endpoint: '/api/simulate-bruteforce',
@@ -427,43 +464,50 @@ const SIM_DEFS = {
                 <span class="text-success"><strong>${d.would_have_succeeded}</strong> compromised</span>
             </div>
             <div class="text-muted mt-2">Rate limiter + bcrypt cost 12 made guessing infeasible.</div>
+            ${renderLog(d.log)}
         `,
     },
     'credential-stuffing': {
         endpoint: '/api/simulate-credential-stuffing',
         render: d => `
             <div><strong>${d.attempted}</strong> leaked pairs replayed &middot; <strong class="text-success">${d.compromised}</strong> compromised</div>
-            <div class="text-muted mt-2">${d.defense}</div>`,
+            <div class="text-muted mt-2">${escapeHtml(d.defense)}</div>
+            ${renderLog(d.log)}`,
     },
     'weak-passwords': {
         endpoint: '/api/simulate-weak-passwords',
         render: d => `
             <div><strong>${d.attempted}</strong> weak passwords attempted &middot; <strong class="text-danger">${d.rejected}</strong> rejected by server</div>
-            <div class="text-muted mt-2">${d.defense}</div>`,
+            <div class="text-muted mt-2">${escapeHtml(d.defense)}</div>
+            ${renderLog(d.log)}`,
     },
     'fake-emails': {
         endpoint: '/api/simulate-fake-emails',
         render: d => `
             <div><strong>${d.attempted}</strong> junk emails submitted &middot; <strong class="text-danger">${d.rejected}</strong> rejected</div>
-            <div class="text-muted mt-2">${d.defense}</div>`,
+            <div class="text-muted mt-2">${escapeHtml(d.defense)}</div>
+            ${renderLog(d.log)}`,
     },
     'sqli': {
         endpoint: '/api/simulate-sqli',
         render: d => `
             <div><strong>${d.attempted}</strong> injection payloads &middot; <strong class="text-success">${d.successful}</strong> succeeded</div>
-            <div class="text-muted mt-2">${d.defense}</div>`,
+            <div class="text-muted mt-2">${escapeHtml(d.defense)}</div>
+            ${renderLog(d.log)}`,
     },
     'xss': {
         endpoint: '/api/simulate-xss',
         render: d => `
             <div><strong>${d.attempted}</strong> XSS payloads submitted &middot; <strong class="text-success">${d.executed}</strong> executed</div>
-            <div class="text-muted mt-2">${d.defense}</div>`,
+            <div class="text-muted mt-2">${escapeHtml(d.defense)}</div>
+            ${renderLog(d.log)}`,
     },
     '2fa-bypass': {
         endpoint: '/api/simulate-2fa-bypass',
         render: d => `
             <div><strong>${d.attempted}</strong> random codes tried &middot; <strong class="text-success">${d.successful}</strong> matched</div>
-            <div class="text-muted mt-2">${d.defense}</div>`,
+            <div class="text-muted mt-2">${escapeHtml(d.defense)}</div>
+            ${renderLog(d.log)}`,
     },
 };
 

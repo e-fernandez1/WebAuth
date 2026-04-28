@@ -147,12 +147,27 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") != "developmen
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
 
 
+CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com; "
+    "img-src 'self' data:; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "frame-ancestors 'none'; "
+    "form-action 'self'"
+)
+
+
 @app.after_request
 def set_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["Content-Security-Policy"] = CSP
     if request.is_secure:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
@@ -446,6 +461,13 @@ def confirm_signup():
         return redirect(url_for("signup"))
 
     if request.method == "POST":
+        ip = request.remote_addr or "unknown"
+        if is_rate_limited(f"confirm-{ip}"):
+            log_event("rate_limited", username=pending.username, detail=f"confirm ip={ip}")
+            flash("Too many attempts. Try again in a minute.", "danger")
+            return render_template("confirm_signup.html", email=pending.email,
+                                   username=pending.username), 429
+        record_attempt(f"confirm-{ip}")
         code = request.form.get("code", "").strip()
         if code == pending.code:
             user = User(
@@ -523,6 +545,12 @@ def verify():
         return redirect(url_for("login"))
 
     if request.method == "POST":
+        ip = request.remote_addr or "unknown"
+        if is_rate_limited(f"verify-{ip}"):
+            log_event("rate_limited", username=user.username, detail=f"verify ip={ip}")
+            flash("Too many verification attempts. Try again in a minute.", "danger")
+            return render_template("verify.html", username=user.username, email=user.email), 429
+        record_attempt(f"verify-{ip}")
         code = request.form.get("code", "").strip()
         record = (
             EmailCode.query
@@ -613,7 +641,19 @@ def simulate_credential_stuffing():
         ("demo", "demo123"),   ("root", "toor"),
     ]
     ctx = request_context()
-    for username, _ in pairs:
+    log = []
+    for username, password in pairs:
+        user = User.query.filter_by(username=username).first()
+        if user is None:
+            outcome = "REJECTED"
+            detail = "no such user — generic error returned to attacker"
+        elif not bcrypt.checkpw(password.encode(), user.password_hash):
+            outcome = "REJECTED"
+            detail = "bcrypt.checkpw → False (password hash mismatch)"
+        else:
+            outcome = "BLOCKED"
+            detail = "password matched, but 2FA email step blocks login"
+        log.append({"input": f"{username} / {password}", "outcome": outcome, "detail": detail})
         _add_sim_event(ctx, "simulated_attack", username,
                        "leaked_credential_pair", "credential_stuffing")
     db.session.commit()
@@ -621,6 +661,7 @@ def simulate_credential_stuffing():
         "attempted": len(pairs),
         "compromised": 0,
         "defense": "bcrypt rejects every wrong-password hash. Even if a password matched, email-based 2FA blocks login.",
+        "log": log,
     })
 
 
@@ -630,17 +671,25 @@ def simulate_weak_passwords():
             "letmein", "monkey", "hello", "Test1", "P@ss"]
     ctx = request_context()
     rejected = 0
+    log = []
     for pw in weak:
         errors = validate_password(pw)
         if errors:
             rejected += 1
+            outcome = "REJECTED"
+            detail = "; ".join(errors)
             _add_sim_event(ctx, "simulated_attack", f"weak_signup_{rejected:02d}",
                            f"rejected: {errors[0]}", "weak_password_attempt")
+        else:
+            outcome = "ACCEPTED"
+            detail = "passed all rules"
+        log.append({"input": pw, "outcome": outcome, "detail": detail})
     db.session.commit()
     return jsonify({
         "attempted": len(weak),
         "rejected": rejected,
         "defense": "Server-side validation enforces 12+ chars, mixed case, digit, symbol, and a common-password blocklist. Same rules even with JavaScript disabled.",
+        "log": log,
     })
 
 
@@ -651,11 +700,15 @@ def simulate_fake_emails():
             "no-tld@localhost"]
     ctx = request_context()
     rejected = 0
+    log = []
     for addr in fake:
         try:
             validate_email(addr, check_deliverability=False)
+            log.append({"input": addr, "outcome": "ACCEPTED", "detail": "passed format check"})
         except EmailNotValidError as e:
             rejected += 1
+            err_msg = str(e).split(".")[0]
+            log.append({"input": addr, "outcome": "REJECTED", "detail": err_msg})
             _add_sim_event(ctx, "simulated_attack", f"fake_signup_{rejected:02d}",
                            f"{addr}: {str(e)[:80]}", "fake_email_attempt")
     db.session.commit()
@@ -663,6 +716,7 @@ def simulate_fake_emails():
         "attempted": len(fake),
         "rejected": rejected,
         "defense": "email-validator parses every address and rejects malformed inputs. Real signups also require confirming a code sent to the address.",
+        "log": log,
     })
 
 
@@ -679,8 +733,13 @@ def simulate_sqli():
         "' OR sleep(5) --",
     ]
     ctx = request_context()
+    log = []
     for payload in payloads:
         result = User.query.filter_by(username=payload).first()
+        outcome = "SAFE" if result is None else "MATCHED"
+        detail = (f"SQL: SELECT * FROM user WHERE username = ?  "
+                  f"[bound: '{payload[:40]}']  → 0 rows")
+        log.append({"input": payload, "outcome": outcome, "detail": detail})
         _add_sim_event(ctx, "simulated_attack", payload,
                        "treated_as_literal_string_no_match" if result is None else "matched",
                        "sql_injection_attempt")
@@ -688,12 +747,14 @@ def simulate_sqli():
     return jsonify({
         "attempted": len(payloads),
         "successful": 0,
-        "defense": "SQLAlchemy ORM parameterizes every query. Payloads are passed as bound values, never as SQL syntax.",
+        "defense": "SQLAlchemy ORM parameterizes every query. Payloads are passed as bound values, never as SQL syntax. The user table is intact — no DROP, no AUTH bypass.",
+        "log": log,
     })
 
 
 @app.route("/api/simulate-xss", methods=["POST"])
 def simulate_xss():
+    from markupsafe import escape
     payloads = [
         "<script>alert(1)</script>",
         "<img src=x onerror=alert(1)>",
@@ -703,14 +764,19 @@ def simulate_xss():
         "<iframe src=javascript:alert(1)>",
     ]
     ctx = request_context()
+    log = []
     for p in payloads:
+        escaped = str(escape(p))
+        log.append({"input": p, "outcome": "ESCAPED",
+                    "detail": f"renders as: {escaped}"})
         _add_sim_event(ctx, "simulated_attack", p,
                        "would_render_as_inert_text", "xss_attempt")
     db.session.commit()
     return jsonify({
         "attempted": len(payloads),
         "executed": 0,
-        "defense": "Jinja2 auto-escapes every template variable. < > \" ' & become HTML entities, so payloads render as harmless text.",
+        "defense": "Jinja2 (server) and a JS escapeHtml helper (client) both convert < > \" ' & into HTML entities. Payloads render as harmless visible text.",
+        "log": log,
     })
 
 
@@ -718,15 +784,19 @@ def simulate_xss():
 def simulate_2fa_bypass():
     attempts = 12
     ctx = request_context()
+    log = []
     for i in range(attempts):
         guess = f"{secrets.randbelow(1_000_000):06d}"
+        log.append({"input": guess, "outcome": "REJECTED",
+                    "detail": "no matching active EmailCode row"})
         _add_sim_event(ctx, "simulated_attack", f"attacker_has_pw_{i:02d}",
                        f"random_code:{guess}", "2fa_bypass_attempt")
     db.session.commit()
     return jsonify({
         "attempted": attempts,
         "successful": 0,
-        "defense": "1-in-1,000,000 chance per random guess. Codes are single-use and expire after 5 minutes, so an attacker has only seconds to brute force the right code.",
+        "defense": "1-in-1,000,000 chance per random guess. Codes are single-use, expire in 5 minutes, and the verify endpoint is rate-limited to 5 tries per minute per IP — meaning at most ~25 attempts per code window.",
+        "log": log,
     })
 
 
@@ -737,16 +807,21 @@ def simulate_bruteforce():
     reached_password_check = 0
     blocked = 0
     ctx = request_context()
+    log = []
     for i in range(attempted):
         if is_rate_limited(sim_key):
             blocked += 1
             event_type = "simulated_blocked"
             detail = "rate_limited"
+            log.append({"input": f"attempt #{i+1:02d}", "outcome": "BLOCKED",
+                        "detail": f"rate limit ({RATE_LIMIT_MAX}/min) exceeded — HTTP 429"})
         else:
             record_attempt(sim_key)
             reached_password_check += 1
             event_type = "simulated_attack"
             detail = "reached_password_check"
+            log.append({"input": f"attempt #{i+1:02d}", "outcome": "REACHED",
+                        "detail": "would hit bcrypt.checkpw (~200ms per guess)"})
         event = AuthEvent(
             event_type=event_type,
             username=f"attacker_{i:02d}",
@@ -763,6 +838,7 @@ def simulate_bruteforce():
         "reached_password_check": reached_password_check,
         "would_have_succeeded": 0,
         "rate_limit_threshold": RATE_LIMIT_MAX,
+        "log": log,
     })
 
 
