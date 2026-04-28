@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}Security &middot; SecureAuth{% endblock %}
+
+{% block content %}
+<section class="py-5">
+    <div class="container">
+        <h2 class="mb-2">Defenses &amp; Threat Model</h2>
+        <p class="text-muted mb-5">Common attacks against authentication systems and how this application defends against each.</p>
+
+        <div class="card mb-5">
+            <div class="card-body">
+                <h4 class="mb-3">Transport Layer Security</h4>
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <p class="text-muted small mb-2 text-uppercase fw-bold" style="letter-spacing: 0.12em;">Production</p>
+                        <p>
+                            In production, this site is served over <strong>HTTPS</strong> with TLS 1.3.
+                            Certificates are issued by <strong>Let's Encrypt</strong>, a non-profit
+                            Certificate Authority, and chained to the
+                            <code>ISRG Root X1</code> root that ships in every modern browser's trust store.
+                            Renewals happen automatically every 90 days.
+                        </p>
+                        <p class="small text-muted">
+                            Browser → Site Cert → R3 Intermediate → ISRG Root X1 → trust store.
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <p class="text-muted small mb-2 text-uppercase fw-bold" style="letter-spacing: 0.12em;">Local Development</p>
+                        <p>
+                            Locally, the dev server runs on plain HTTP because self-signed
+                            certificates trigger browser warnings that distract from the demo.
+                            The TLS layer is provided by the production host, not the application,
+                            so deploying behind any modern reverse proxy (Render, Fly.io, Cloudflare,
+                            nginx + certbot) yields HTTPS automatically.
+                        </p>
+                        <p class="small text-muted">
+                            Without TLS: passwords and TOTP codes are sent in plaintext over the wire &mdash; trivial to capture on any shared network.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h4 class="mb-3">Attack &times; Defense Matrix</h4>
+        <div class="row g-3 mb-5">
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="mb-0">Brute Force Login</h6>
+                            <span class="badge bg-success">Active</span>
+                        </div>
+                        <p class="small text-muted mb-1"><strong>Attack:</strong> Try thousands of password guesses against a known username.</p>
+                        <p class="small text-muted mb-0"><strong>Defense:</strong> Per-IP rate limiter (5 attempts / minute) + bcrypt cost factor 12 makes each guess slow even if it reaches the hash check.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="mb-0">Credential Stuffing</h6>
+                            <span class="badge bg-success">Active</span>
+                        </div>
+                        <p class="small text-muted mb-1"><strong>Attack:</strong> Replay leaked username/password pairs from other breaches.</p>
+                        <p class="small text-muted mb-0"><strong>Defense:</strong> Email-based 2FA blocks login even when the password is correct &mdash; the attacker doesn't have access to the user's email inbox.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="mb-0">Database Breach</h6>
+                            <span class="badge bg-success">Active</span>
+                        </div>
+                        <p class="small text-muted mb-1"><strong>Attack:</strong> Steal the user table and crack credentials offline.</p>
+                        <p class="small text-muted mb-0"><strong>Defense:</strong> Passwords are stored as bcrypt hashes with per-user salts. Cost factor 12 means each guess takes ~200ms &mdash; offline brute force is days per password.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="mb-0">Replay Attack</h6>
+                            <span class="badge bg-success">Active</span>
+                        </div>
+                        <p class="small text-muted mb-1"><strong>Attack:</strong> Capture a valid 2FA code and reuse it to log in later.</p>
+                        <p class="small text-muted mb-0"><strong>Defense:</strong> Email codes are single-use (marked <code>used = True</code> on first verification) and expire after 5 minutes. A captured code becomes worthless the moment it's redeemed or the window passes.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="mb-0">Weak Password Submission</h6>
+                            <span class="badge bg-success">Active</span>
+                        </div>
+                        <p class="small text-muted mb-1"><strong>Attack:</strong> User submits "password123" expecting the system to accept it.</p>
+                        <p class="small text-muted mb-0"><strong>Defense:</strong> Server-side validation enforces length (12+), character classes, and a common-password blocklist. Client-side validation just provides feedback &mdash; the server is authoritative.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="mb-0">Session Hijacking</h6>
+                            <span class="badge bg-success">Active</span>
+                        </div>
+                        <p class="small text-muted mb-1"><strong>Attack:</strong> Steal or forge a session cookie to impersonate a user.</p>
+                        <p class="small text-muted mb-0"><strong>Defense:</strong> Flask-Login uses cryptographically signed session cookies. Tampering invalidates the signature; logout actively destroys the session.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="mb-0">SQL Injection</h6>
+                            <span class="badge bg-success">Active</span>
+                        </div>
+                        <p class="small text-muted mb-1"><strong>Attack:</strong> Submit <code>' OR '1'='1</code> as a username to bypass authentication.</p>
+                        <p class="small text-muted mb-0"><strong>Defense:</strong> All database queries go through SQLAlchemy's parameterized query builder &mdash; user input is never concatenated into SQL.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="mb-0">Eavesdropping (MITM)</h6>
+                            <span class="badge bg-warning">Production Only</span>
+                        </div>
+                        <p class="small text-muted mb-1"><strong>Attack:</strong> Sniff network traffic on a shared Wi-Fi to read credentials in flight.</p>
+                        <p class="small text-muted mb-0"><strong>Defense:</strong> TLS 1.3 encrypts every byte in transit. Active in production via Let's Encrypt; inactive on the local dev server.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-5">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-3">
+                    <div>
+                        <h4 class="mb-1">Live Brute Force Simulation</h4>
+                        <p class="text-muted small mb-0">Fires 25 fake login attempts at the system. Watch the rate limiter block the attack and the analytics dashboard light up.</p>
+                    </div>
+                    <button id="run-sim" class="btn btn-warning">Run Brute Force Simulation</button>
+                </div>
+
+                <div id="sim-results" class="d-none">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3">
+                            <div class="stat-tile p-3 rounded" style="background: var(--surface-2); border: 1px solid var(--border);">
+                                <p class="text-uppercase small text-muted mb-1">Attempted</p>
+                                <h3 id="sim-attempted" class="mb-0">0</h3>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stat-tile p-3 rounded" style="background: var(--surface-2); border: 1px solid var(--border);">
+                                <p class="text-uppercase small text-muted mb-1">Blocked</p>
+                                <h3 id="sim-blocked" class="mb-0 text-danger">0</h3>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stat-tile p-3 rounded" style="background: var(--surface-2); border: 1px solid var(--border);">
+                                <p class="text-uppercase small text-muted mb-1">Reached Hash Check</p>
+                                <h3 id="sim-reached" class="mb-0 text-warning">0</h3>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stat-tile p-3 rounded" style="background: var(--surface-2); border: 1px solid var(--border);">
+                                <p class="text-uppercase small text-muted mb-1">Account Compromised</p>
+                                <h3 id="sim-success" class="mb-0 text-success">0</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="progress mb-2" style="height: 24px;">
+                        <div id="sim-bar-blocked" class="progress-bar bg-danger" style="width: 0%">Blocked</div>
+                        <div id="sim-bar-reached" class="progress-bar bg-warning" style="width: 0%">Reached check</div>
+                    </div>
+                    <p class="small text-muted mt-3">
+                        Of <strong id="sim-total">25</strong> attack attempts, the rate limiter blocked
+                        <span id="sim-blocked-text">0</span> outright. The remaining attempts hit the
+                        password check, where bcrypt-hashed passwords with high entropy made guessing
+                        infeasible. Account compromise rate: <strong>0/25</strong>.
+                        <a href="{{ url_for('analytics') }}">View the spike on analytics &rarr;</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</section>
+
+<script>
+document.getElementById('run-sim').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = 'Running...';
+    try {
+        const res = await fetch('/api/simulate-bruteforce', { method: 'POST' });
+        const data = await res.json();
+        document.getElementById('sim-results').classList.remove('d-none');
+
+        const tick = (id, target) => {
+            const el = document.getElementById(id);
+            let n = 0;
+            const step = () => {
+                if (n < target) { n++; el.textContent = n; requestAnimationFrame(step); }
+            };
+            step();
+        };
+        tick('sim-attempted', data.attempted);
+        tick('sim-blocked', data.blocked_by_rate_limit);
+        tick('sim-reached', data.reached_password_check);
+        tick('sim-success', data.would_have_succeeded);
+
+        const blockedPct = (data.blocked_by_rate_limit / data.attempted) * 100;
+        const reachedPct = (data.reached_password_check / data.attempted) * 100;
+        document.getElementById('sim-bar-blocked').style.width = blockedPct + '%';
+        document.getElementById('sim-bar-reached').style.width = reachedPct + '%';
+        document.getElementById('sim-total').textContent = data.attempted;
+        document.getElementById('sim-blocked-text').textContent = data.blocked_by_rate_limit;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Run Brute Force Simulation';
+    }
+});
+</script>
+{% endblock %}

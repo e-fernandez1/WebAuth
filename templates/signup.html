@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Sign Up &middot; SecureAuth Demo{% endblock %}
+
+{% block content %}
+<section class="py-5">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-6">
+                <h2 class="mb-3">Create an Account</h2>
+                <p class="text-muted">Watch the password rules validate in real time. Server-side validation runs again on submit.</p>
+
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endwith %}
+
+                <form method="POST" novalidate>
+                    <div class="mb-3">
+                        <label class="form-label">Username</label>
+                        <input class="form-control" name="username" required autocomplete="username">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" name="email" required autocomplete="email">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Password</label>
+                        <input type="password" class="form-control" name="password" id="password" required autocomplete="new-password">
+                    </div>
+
+                    <div class="card border-0 bg-light mb-3">
+                        <div class="card-body">
+                            <p class="small mb-2 fw-bold">Password Strength</p>
+                            <div class="progress mb-3" style="height: 8px;">
+                                <div id="strength-bar" class="progress-bar bg-danger" style="width: 0%"></div>
+                            </div>
+                            <ul class="list-unstyled small mb-2" id="rules">
+                                <li id="rule-length" class="text-muted">&#9711; At least {{ rules.min_length }} characters</li>
+                                <li id="rule-upper" class="text-muted">&#9711; Contains uppercase letter</li>
+                                <li id="rule-lower" class="text-muted">&#9711; Contains lowercase letter</li>
+                                <li id="rule-digit" class="text-muted">&#9711; Contains a digit</li>
+                                <li id="rule-symbol" class="text-muted">&#9711; Contains a symbol</li>
+                                <li id="rule-common" class="text-muted">&#9711; Not a common password</li>
+                            </ul>
+                            <p class="small mb-1"><strong>Entropy:</strong> <span id="entropy">0</span> bits</p>
+                            <p class="small mb-0"><strong>Time to crack (offline, bcrypt):</strong> <span id="crack-time">&mdash;</span></p>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-dark">Create Account</button>
+                    <a href="{{ url_for('login') }}" class="btn btn-link">Already have an account?</a>
+                </form>
+            </div>
+            <div class="col-lg-6 d-none d-lg-block">
+                <div class="card border-0 bg-dark text-white-50 p-4 h-100">
+                    <h5 class="text-white">What Happens When You Submit</h5>
+                    <ol class="small">
+                        <li>Server re-validates every password rule (defense in depth).</li>
+                        <li>Password is salted and hashed with <code class="text-warning">bcrypt</code> at cost factor 12 &mdash; the plaintext is never stored.</li>
+                        <li>You'll be redirected to the login page.</li>
+                        <li>At login, after your password verifies, we email you a 6-digit one-time code.</li>
+                        <li>This signup event is logged to the public analytics dashboard.</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script src="{{ url_for('static', filename='password-strength.js') }}"></script>
+{% endblock %}

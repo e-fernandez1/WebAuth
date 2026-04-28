@@ -1,0 +1,475 @@
+{% extends "base.html" %}
+{% block title %}Code Walkthrough &middot; SecureAuth{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css">
+<style>
+    .toc {
+        position: sticky;
+        top: 90px;
+        max-height: calc(100vh - 110px);
+        overflow-y: auto;
+    }
+    .toc a {
+        display: block;
+        color: var(--text-muted);
+        padding: 0.35rem 0.5rem;
+        border-left: 2px solid transparent;
+        font-size: 0.9rem;
+        text-decoration: none;
+    }
+    .toc a:hover, .toc a.active {
+        color: var(--accent);
+        border-left-color: var(--accent);
+        background: var(--surface);
+    }
+    pre[class*="language-"] {
+        background: #0f1117 !important;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        font-size: 0.85rem;
+        padding: 1.2rem;
+    }
+    .why {
+        background: rgba(94, 234, 212, 0.05);
+        border-left: 3px solid var(--accent);
+        padding: 1rem 1.2rem;
+        border-radius: 0 10px 10px 0;
+        margin: 1rem 0 1.5rem;
+    }
+    .why .label {
+        text-transform: uppercase;
+        font-size: 0.72rem;
+        letter-spacing: 0.18em;
+        color: var(--accent);
+        font-weight: 700;
+        margin-bottom: 0.3rem;
+    }
+    .file-tag {
+        display: inline-block;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.75rem;
+        padding: 0.2rem 0.6rem;
+        border-radius: 6px;
+        color: var(--text-muted);
+        margin-bottom: 0.6rem;
+    }
+    section.walk {
+        scroll-margin-top: 90px;
+        border-bottom: none;
+        padding: 2.5rem 0;
+    }
+    section.walk + section.walk {
+        border-top: 1px solid var(--border);
+    }
+    .file-tree {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.85rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1.2rem 1.5rem;
+        line-height: 1.9;
+    }
+    .file-tree .dim { color: var(--text-muted); }
+    .file-tree .file { color: var(--accent); }
+</style>
+
+<section class="py-4">
+    <div class="container">
+        <h2 class="mb-1">Code Walkthrough</h2>
+        <p class="text-muted">Every key piece of this project, with the code shown and the design rationale next to it. Read top to bottom or jump to any section.</p>
+    </div>
+</section>
+
+<section class="py-4">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-3">
+                <nav class="toc">
+                    <a href="#overview">1. Project Overview</a>
+                    <a href="#tree">2. File Structure</a>
+                    <a href="#schema">3. Database Schema</a>
+                    <a href="#password-rules">4. Password Validation</a>
+                    <a href="#bcrypt">5. bcrypt Hashing</a>
+                    <a href="#email-2fa">6. Email-Based 2FA</a>
+                    <a href="#verify">7. Verification Flow</a>
+                    <a href="#rate-limit">8. Rate Limiting</a>
+                    <a href="#sessions">9. Session Management</a>
+                    <a href="#admin">10. Admin Authorization</a>
+                    <a href="#analytics">11. Real-Time Analytics</a>
+                    <a href="#simulator">12. Brute Force Simulator</a>
+                    <a href="#why">13. Why These Choices</a>
+                </nav>
+            </div>
+
+            <div class="col-lg-9">
+
+                <section class="walk" id="overview">
+                    <h3>1. Project Overview</h3>
+                    <p>
+                        SecureAuth is a Flask web application that demonstrates production-grade authentication
+                        controls: password rules with live feedback, salted bcrypt hashing, email-based two-factor
+                        authentication, IP-based rate limiting, signed session cookies, and a real-time analytics
+                        dashboard that streams every authentication event on the system.
+                    </p>
+                    <p>
+                        It is intentionally small &mdash; under 500 lines of Python &mdash; so every defense is
+                        traceable to the exact code that implements it. Each section below shows the relevant code
+                        and a one-paragraph rationale.
+                    </p>
+                </section>
+
+                <section class="walk" id="tree">
+                    <h3>2. File Structure</h3>
+                    <div class="file-tree">
+                        auth-site/<br>
+                        &nbsp;&nbsp;<span class="file">app.py</span>                  <span class="dim"># Flask app: routes, auth flow, rate limiter, email sender</span><br>
+                        &nbsp;&nbsp;<span class="file">models.py</span>                <span class="dim"># SQLAlchemy: User, EmailCode, AuthEvent</span><br>
+                        &nbsp;&nbsp;<span class="file">seed.py</span>                  <span class="dim"># Seed test users for the demo</span><br>
+                        &nbsp;&nbsp;<span class="file">.env.example</span>             <span class="dim"># SMTP config template</span><br>
+                        &nbsp;&nbsp;templates/<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">base.html</span>            <span class="dim"># Shared layout, navbar, footer</span><br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">index.html</span>           <span class="dim"># Landing + live TOTP demo</span><br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">signup.html</span>          <span class="dim"># Signup form with live password meter</span><br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">login.html</span>           <span class="dim"># Step 1: password</span><br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">verify.html</span>          <span class="dim"># Step 2: email code</span><br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">dashboard.html</span>       <span class="dim"># Gated user page</span><br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">analytics.html</span>       <span class="dim"># Public live dashboard</span><br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">security.html</span>        <span class="dim"># Threat model + brute-force simulator</span><br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">admin.html</span>           <span class="dim"># Admin console: users, events, tools</span><br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">explained.html</span>       <span class="dim"># This page</span><br>
+                        &nbsp;&nbsp;static/<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">style.css</span>            <span class="dim"># Dark theme, animations, layout</span><br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="file">password-strength.js</span> <span class="dim"># Live entropy + crack-time calc</span>
+                    </div>
+                </section>
+
+                <section class="walk" id="schema">
+                    <h3>3. Database Schema</h3>
+                    <span class="file-tag">models.py</span>
+<pre><code class="language-python">class User(UserMixin, db.Model):
+    id            = db.Column(db.Integer, primary_key=True)
+    username      = db.Column(db.String(64), unique=True, nullable=False)
+    email         = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.LargeBinary, nullable=False)
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class EmailCode(db.Model):
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    code       = db.Column(db.String(6), nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used       = db.Column(db.Boolean, default=False)
+
+
+class AuthEvent(db.Model):
+    id         = db.Column(db.Integer, primary_key=True)
+    event_type = db.Column(db.String(32), nullable=False)
+    username   = db.Column(db.String(64))
+    detail     = db.Column(db.String(255))
+    ip         = db.Column(db.String(45))
+    timestamp  = db.Column(db.DateTime, default=datetime.utcnow, index=True)</code></pre>
+                    <div class="why">
+                        <p class="label">Why this schema</p>
+                        <p class="mb-0"><strong>password_hash is bytes, not text</strong> &mdash; bcrypt produces binary, and storing it as <code>LargeBinary</code> avoids any encoding ambiguity. <strong>EmailCode is its own table</strong> rather than a column on User because codes are short-lived, single-use objects with a clear lifecycle (issued, expires, used). <strong>AuthEvent is append-only</strong> and indexed on timestamp so the analytics dashboard can pull recent events cheaply.</p>
+                    </div>
+                </section>
+
+                <section class="walk" id="password-rules">
+                    <h3>4. Password Validation</h3>
+                    <span class="file-tag">app.py</span>
+<pre><code class="language-python">PASSWORD_RULES = {"min_length": 12, "require_upper": True, "require_lower": True,
+                  "require_digit": True, "require_symbol": True}
+
+COMMON_PASSWORDS = {"password", "password123", "qwerty123", "letmein123", ...}
+
+def validate_password(pw):
+    errors = []
+    if len(pw) &lt; PASSWORD_RULES["min_length"]:
+        errors.append(f"Must be at least {PASSWORD_RULES['min_length']} characters")
+    if not re.search(r"[A-Z]", pw): errors.append("Must contain an uppercase letter")
+    if not re.search(r"[a-z]", pw): errors.append("Must contain a lowercase letter")
+    if not re.search(r"\d",   pw): errors.append("Must contain a digit")
+    if not re.search(r"[^A-Za-z0-9]", pw): errors.append("Must contain a symbol")
+    if pw.lower() in COMMON_PASSWORDS: errors.append("This password is too common")
+    return errors</code></pre>
+                    <div class="why">
+                        <p class="label">Why 12 characters and a common-password blocklist</p>
+                        <p class="mb-0">12 characters with mixed character classes gives ~78 bits of entropy &mdash; well past the threshold where offline cracking becomes infeasible against bcrypt at cost factor 12. NIST SP 800-63B explicitly recommends checking submitted passwords against a list of known-breached values, which is what the blocklist does. The same <code>validate_password()</code> runs on the server even if a client bypasses the JavaScript validator.</p>
+                    </div>
+                </section>
+
+                <section class="walk" id="bcrypt">
+                    <h3>5. bcrypt Hashing</h3>
+                    <span class="file-tag">app.py</span>
+<pre><code class="language-python"># On signup: hash the password before storing
+pw_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12))
+user = User(username=username, email=email, password_hash=pw_hash)
+
+# On login: compare without ever decrypting (bcrypt isn't reversible)
+if not bcrypt.checkpw(password.encode("utf-8"), user.password_hash):
+    flash("Invalid credentials.", "danger")</code></pre>
+                    <div class="why">
+                        <p class="label">Why bcrypt at cost factor 12</p>
+                        <p class="mb-0">bcrypt is intentionally slow. Cost 12 means 2^12 = 4096 iterations of the underlying Blowfish key schedule, so a single guess takes ~200ms on commodity hardware. An attacker with a leaked database who tries one billion guesses against one user will spend over six years &mdash; assuming they have specialized hardware. The per-user salt (generated by <code>gensalt()</code>) defeats rainbow tables: precomputed dictionaries are useless because every hash uses a different salt.</p>
+                    </div>
+                </section>
+
+                <section class="walk" id="email-2fa">
+                    <h3>6. Email-Based 2FA</h3>
+                    <span class="file-tag">app.py</span>
+<pre><code class="language-python">def issue_email_code(user):
+    # Invalidate any outstanding codes for this user (single-active-code policy)
+    EmailCode.query.filter_by(user_id=user.id, used=False).update({"used": True})
+
+    # Cryptographically random 6-digit code
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    record = EmailCode(
+        user_id=user.id,
+        code=code,
+        expires_at=datetime.utcnow() + timedelta(minutes=5),
+    )
+    db.session.add(record)
+    db.session.commit()
+    send_verification_email(user.email, code)
+
+
+def send_verification_email(to_email, code):
+    """Console fallback for dev; real SMTP for production."""
+    if not SMTP_HOST or not SMTP_USER or not SMTP_PASSWORD:
+        print(f"[EMAIL FALLBACK]  To: {to_email}  Code: {code}")
+        return True
+    msg = EmailMessage()
+    msg["Subject"] = "Your SecureAuth verification code"
+    msg["From"] = SMTP_FROM
+    msg["To"] = to_email
+    msg.set_content(f"Your code is: {code}\nExpires in 5 minutes.")
+    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.send_message(msg)</code></pre>
+                    <div class="why">
+                        <p class="label">Why <code>secrets.randbelow</code> instead of <code>random</code></p>
+                        <p class="mb-0">Python's <code>random</code> module is deterministic given its seed and is not safe for security-sensitive randomness. <code>secrets</code> uses the OS cryptographic RNG (e.g. <code>/dev/urandom</code> on Linux, BCryptGenRandom on Windows). The single-active-code policy &mdash; invalidating prior codes when a new one is issued &mdash; closes a window where an attacker could request a code and try to use a previously-leaked one in parallel.</p>
+                    </div>
+                    <div class="why">
+                        <p class="label">Why a 5-minute expiration</p>
+                        <p class="mb-0">Long enough that a real user receives the email, switches windows, and types the code without rushing. Short enough that an intercepted code (e.g. shoulder-surfed from an email preview) is useless after a brief window. A captured code is also single-use &mdash; once verified, <code>used = True</code> and it cannot be replayed.</p>
+                    </div>
+                </section>
+
+                <section class="walk" id="verify">
+                    <h3>7. Verification Flow</h3>
+                    <span class="file-tag">app.py</span>
+<pre><code class="language-python">@app.route("/verify", methods=["GET", "POST"])
+def verify():
+    user_id = session.get("pending_2fa_user_id")
+    if not user_id:
+        return redirect(url_for("login"))
+    user = db.session.get(User, user_id)
+
+    if request.method == "POST":
+        code = request.form.get("code", "").strip()
+        record = (
+            EmailCode.query
+            .filter_by(user_id=user.id, code=code, used=False)
+            .filter(EmailCode.expires_at &gt; datetime.utcnow())
+            .first()
+        )
+        if record:
+            record.used = True
+            db.session.commit()
+            session.pop("pending_2fa_user_id", None)
+            login_user(user)
+            log_event("2fa_success", username=user.username)
+            return redirect(url_for("dashboard"))
+        else:
+            log_event("2fa_fail", username=user.username)
+            flash("Invalid or expired code.", "danger")
+    return render_template("verify.html", username=user.username, email=user.email)</code></pre>
+                    <div class="why">
+                        <p class="label">Why the code lookup checks four things atomically</p>
+                        <p class="mb-0">A valid code must (1) belong to this user, (2) match the submitted digits exactly, (3) not be marked used, and (4) not be expired. All four are enforced in the same SQL query so there's no time-of-check-to-time-of-use gap. The pending user ID lives in the session, not in a form field, so an attacker who knows another user's username cannot complete their 2FA step.</p>
+                    </div>
+                </section>
+
+                <section class="walk" id="rate-limit">
+                    <h3>8. Rate Limiting</h3>
+                    <span class="file-tag">app.py</span>
+<pre><code class="language-python">LOGIN_ATTEMPTS = defaultdict(list)              # ip -&gt; list of attempt timestamps
+RATE_LIMIT_WINDOW = timedelta(minutes=1)
+RATE_LIMIT_MAX = 5
+
+def is_rate_limited(key):
+    now = datetime.utcnow()
+    cutoff = now - RATE_LIMIT_WINDOW
+    LOGIN_ATTEMPTS[key] = [t for t in LOGIN_ATTEMPTS[key] if t &gt; cutoff]
+    return len(LOGIN_ATTEMPTS[key]) &gt;= RATE_LIMIT_MAX
+
+def record_attempt(key):
+    LOGIN_ATTEMPTS[key].append(datetime.utcnow())
+
+# Inside /login:
+if is_rate_limited(ip):
+    log_event("rate_limited", username=username, detail=f"ip={ip}")
+    return render_template("login.html"), 429</code></pre>
+                    <div class="why">
+                        <p class="label">Why per-IP, not per-username</p>
+                        <p class="mb-0">A username-scoped rate limit lets an attacker lock a victim out of their own account by spamming bad guesses at their username (denial of service). IP-scoped limiting forces the attacker to switch IPs &mdash; expensive for a real attack, free for a legitimate user. In production this would be backed by Redis (or fronted by a CDN like Cloudflare) so it survives restarts and works across multiple servers.</p>
+                    </div>
+                </section>
+
+                <section class="walk" id="sessions">
+                    <h3>9. Session Management</h3>
+                    <span class="file-tag">app.py</span>
+<pre><code class="language-python">app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-me-in-prod")
+
+login_manager = LoginManager(app)
+login_manager.login_view = "login"
+
+@login_manager.user_loader
+def load_user(user_id):
+    return db.session.get(User, int(user_id))
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    return render_template("dashboard.html", events=...)</code></pre>
+                    <div class="why">
+                        <p class="label">Why Flask-Login + signed cookies</p>
+                        <p class="mb-0">Flask-Login stores only the user's ID in a session cookie that is signed (not encrypted) with the app's <code>SECRET_KEY</code>. Tampering with the cookie invalidates the signature and the request is treated as unauthenticated. The <code>@login_required</code> decorator gates protected routes &mdash; attempting to hit <code>/dashboard</code> without a valid session redirects to login. <code>logout_user()</code> actively destroys the session rather than letting it linger.</p>
+                    </div>
+                </section>
+
+                <section class="walk" id="admin">
+                    <h3>10. Admin Authorization</h3>
+                    <span class="file-tag">app.py</span>
+<pre><code class="language-python">def admin_required(f):
+    @wraps(f)
+    @login_required
+    def wrapper(*args, **kwargs):
+        if not getattr(current_user, "is_admin", False):
+            abort(403)
+        return f(*args, **kwargs)
+    return wrapper
+
+@app.route("/admin")
+@admin_required
+def admin_home():
+    users = User.query.order_by(User.created_at.desc()).all()
+    events = AuthEvent.query.order_by(AuthEvent.timestamp.desc()).limit(80).all()
+    return render_template("admin.html", users=users, events=events, ...)
+
+@app.route("/admin/user/&lt;int:user_id&gt;/delete", methods=["POST"])
+@admin_required
+def admin_delete_user(user_id):
+    if user_id == current_user.id:
+        flash("You can't delete your own account.", "danger")
+        return redirect(url_for("admin_home"))
+    user = db.session.get(User, user_id)
+    if user:
+        EmailCode.query.filter_by(user_id=user.id).delete()
+        db.session.delete(user)
+        db.session.commit()
+        log_event("admin_action", username=current_user.username,
+                  detail=f"deleted_user={user.username}")</code></pre>
+                    <div class="why">
+                        <p class="label">Why a custom decorator and self-protection</p>
+                        <p class="mb-0">The <code>@admin_required</code> decorator stacks on top of <code>@login_required</code>, so an unauthenticated request gets redirected to login and an authenticated-but-non-admin request gets a 403. Every admin action checks <code>user_id == current_user.id</code> before destructive operations &mdash; this prevents an admin from accidentally locking themselves out by demoting or deleting their own account, which would otherwise leave the system with no admin. Every admin action is also logged as an <code>admin_action</code> event with the actor's username and the affected target, creating an audit trail.</p>
+                    </div>
+                </section>
+
+                <section class="walk" id="analytics">
+                    <h3>11. Real-Time Analytics</h3>
+                    <span class="file-tag">app.py</span>
+<pre><code class="language-python">@app.route("/api/stats")
+def api_stats():
+    counts = {}
+    for event_type in ["signup_success", "signup_fail", "login_fail",
+                       "2fa_success", "2fa_fail", "logout",
+                       "simulated_attack", "simulated_blocked"]:
+        counts[event_type] = AuthEvent.query.filter_by(event_type=event_type).count()
+    recent = AuthEvent.query.order_by(AuthEvent.timestamp.desc()).limit(20).all()
+    return jsonify({"counts": counts, "recent": [e.to_dict() for e in recent],
+                    "total_users": User.query.count()})</code></pre>
+                    <span class="file-tag mt-3">analytics.html</span>
+<pre><code class="language-javascript">async function refresh() {
+    const res = await fetch('/api/stats');
+    const data = await res.json();
+    animateNumber(document.getElementById('stat-users'), data.total_users);
+    // ...update bars, chart, recent feed...
+}
+refresh();
+setInterval(refresh, 2000);   // poll every 2 seconds</code></pre>
+                    <div class="why">
+                        <p class="label">Why polling instead of WebSockets</p>
+                        <p class="mb-0">A 2-second poll is good enough for a dashboard that humans look at, and it works on any host (Render free tier, school server, anything that speaks HTTP). WebSockets or Server-Sent Events would push updates faster but add deployment complexity for a marginal UX gain. The chart shows the <em>delta between polls</em> &mdash; so each spike represents events that occurred in the last 2 seconds, which is what makes the brute-force simulator look dramatic.</p>
+                    </div>
+                </section>
+
+                <section class="walk" id="simulator">
+                    <h3>12. Brute Force Simulator</h3>
+                    <span class="file-tag">app.py</span>
+<pre><code class="language-python">@app.route("/api/simulate-bruteforce", methods=["POST"])
+def simulate_bruteforce():
+    sim_key = f"sim-{datetime.utcnow().timestamp()}"   # isolated rate-limit bucket
+    attempted, reached, blocked = 25, 0, 0
+    for i in range(attempted):
+        if is_rate_limited(sim_key):
+            blocked += 1
+            event_type = "simulated_blocked"
+        else:
+            record_attempt(sim_key)
+            reached += 1
+            event_type = "simulated_attack"
+        db.session.add(AuthEvent(event_type=event_type, username=f"attacker_{i:02d}",
+                                 detail="brute_force_demo", ip=request.remote_addr))
+    db.session.commit()
+    return jsonify({"attempted": attempted, "blocked_by_rate_limit": blocked,
+                    "reached_password_check": reached, "would_have_succeeded": 0})</code></pre>
+                    <div class="why">
+                        <p class="label">Why a separate sim_key per call</p>
+                        <p class="mb-0">If the simulator shared the real per-IP rate-limit bucket, clicking the demo button would lock the user out of their own login flow for a minute. Using a fresh <code>sim_key</code> per simulation keeps the demo isolated. The events still show in the public analytics dashboard so the audience sees the attack pattern in real time, but real auth traffic is unaffected.</p>
+                    </div>
+                </section>
+
+                <section class="walk" id="why">
+                    <h3>13. Why These Choices, In One Place</h3>
+                    <ul>
+                        <li><strong>Flask, not Django:</strong> Django carries a lot of machinery for a project this size. Flask is small enough that every line of authentication logic lives in one file and is auditable.</li>
+                        <li><strong>SQLite, not Postgres:</strong> Single-file database, zero setup, sufficient for a demo. The SQLAlchemy abstraction means migrating to Postgres in production is a one-line config change.</li>
+                        <li><strong>bcrypt, not SHA256 or PBKDF2:</strong> Both are valid, but bcrypt has a tunable cost factor explicitly designed to slow down with hardware advances. Argon2 is also acceptable; bcrypt was chosen here for ubiquity.</li>
+                        <li><strong>Email 2FA, not TOTP-only:</strong> Universal access &mdash; anyone with an email account can use the system without installing an authenticator app. Tradeoff: email accounts can be compromised, so TOTP is technically stronger; for an educational demo, the accessibility wins.</li>
+                        <li><strong>In-memory rate limiter:</strong> Sufficient for a single-process demo. Production deployments behind a load balancer would use Redis to share state across workers.</li>
+                        <li><strong>Server-side validation duplicates the client:</strong> Client-side checks improve UX but are not security. Every rule on the signup form is re-checked in <code>validate_password()</code> after submission, so a user who disables JavaScript or sends a raw HTTP request gets no advantage.</li>
+                        <li><strong>SQLAlchemy ORM, not raw SQL:</strong> The ORM compiles every query with bound parameters, structurally preventing SQL injection. The matrix on the Security page is honest &mdash; injecting <code>' OR '1'='1' --</code> at the login form fails because the input is treated as a literal username string.</li>
+                        <li><strong>Live analytics:</strong> Lets the audience see defenses working in real time, not just hear about them. The dashboard, the simulator, and the threat-model page exist so the security claims are verifiable on screen during the presentation.</li>
+                        <li><strong>Admin role as a database column, not a hardcoded username:</strong> Storing <code>is_admin</code> as a User field lets administrators be promoted or demoted at runtime through the admin console &mdash; without code deploys. Self-action guards prevent the last admin from accidentally removing themselves.</li>
+                    </ul>
+                </section>
+
+            </div>
+        </div>
+    </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-javascript.min.js"></script>
+<script>
+const tocLinks = document.querySelectorAll('.toc a');
+const sections = document.querySelectorAll('section.walk');
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            const id = entry.target.id;
+            tocLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + id));
+        }
+    });
+}, { rootMargin: '-40% 0px -55% 0px' });
+sections.forEach(s => observer.observe(s));
+</script>
+{% endblock %}

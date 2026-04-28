@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Admin &middot; SecureAuth{% endblock %}
+
+{% block content %}
+<section class="py-5">
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-end mb-4 flex-wrap gap-3">
+            <div>
+                <h2 class="mb-1">Admin Console</h2>
+                <p class="text-muted mb-0">Logged in as <strong>{{ current_user.username }}</strong>. Manage users, monitor events, and reset demo state.</p>
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endwith %}
+
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-md-3">
+                <div class="card stat-tile"><div class="card-body">
+                    <p class="text-uppercase small text-muted mb-2">Users</p>
+                    <h3 class="mb-0">{{ counts.users }}</h3>
+                </div></div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card stat-tile"><div class="card-body">
+                    <p class="text-uppercase small text-muted mb-2">Events</p>
+                    <h3 class="mb-0">{{ counts.events }}</h3>
+                </div></div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card stat-tile"><div class="card-body">
+                    <p class="text-uppercase small text-muted mb-2">Simulated</p>
+                    <h3 class="mb-0 text-warning">{{ counts.simulated }}</h3>
+                </div></div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card stat-tile"><div class="card-body">
+                    <p class="text-uppercase small text-muted mb-2">Active Codes</p>
+                    <h3 class="mb-0 text-primary">{{ counts.active_codes }}</h3>
+                </div></div>
+            </div>
+        </div>
+
+        <ul class="nav nav-tabs mb-4" role="tablist">
+            <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#users-tab">Users</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#events-tab">Events</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tools-tab">Tools</button></li>
+        </ul>
+
+        <div class="tab-content">
+
+            <div class="tab-pane fade show active" id="users-tab">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="mb-3">All Users</h5>
+                        <div class="table-responsive">
+                        <table class="table align-middle">
+                            <thead class="text-muted small text-uppercase">
+                                <tr>
+                                    <th>ID</th><th>Username</th><th>Email</th><th>Created</th><th>Role</th><th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for u in users %}
+                                <tr>
+                                    <td class="font-monospace text-muted">{{ u.id }}</td>
+                                    <td><strong>{{ u.username }}</strong>{% if u.id == current_user.id %} <span class="badge bg-info text-dark ms-1">you</span>{% endif %}</td>
+                                    <td class="small">{{ u.email }}</td>
+                                    <td class="small text-muted font-monospace">{{ u.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    <td>
+                                        {% if u.is_admin %}
+                                            <span class="badge bg-warning">admin</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">user</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        {% if u.id != current_user.id %}
+                                        <form method="POST" action="{{ url_for('admin_toggle_admin', user_id=u.id) }}" class="d-inline">
+                                            <button class="btn btn-sm btn-outline-light">Toggle admin</button>
+                                        </form>
+                                        <form method="POST" action="{{ url_for('admin_delete_user', user_id=u.id) }}" class="d-inline" onsubmit="return confirm('Delete user {{ u.username }}? This cannot be undone.');">
+                                            <button class="btn btn-sm btn-outline-light text-danger">Delete</button>
+                                        </form>
+                                        {% else %}
+                                            <span class="text-muted small">&mdash;</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="events-tab">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                            <h5 class="mb-0">Recent Events <span class="text-muted small">(latest 80{% if current_filter %}, filtered{% endif %})</span></h5>
+                            <form method="GET" action="{{ url_for('admin_home') }}" class="d-flex gap-2">
+                                <select class="form-control form-control-sm" name="filter" onchange="this.form.submit()">
+                                    <option value="">All event types</option>
+                                    {% for t in ["signup_success","signup_fail","login_fail","login_success_pending_2fa","2fa_success","2fa_fail","logout","rate_limited","simulated_attack","simulated_blocked","admin_action"] %}
+                                        <option value="{{ t }}" {% if current_filter == t %}selected{% endif %}>{{ t }}</option>
+                                    {% endfor %}
+                                </select>
+                                {% if current_filter %}<a href="{{ url_for('admin_home') }}" class="btn btn-sm btn-outline-light">Clear</a>{% endif %}
+                            </form>
+                        </div>
+                        <div class="table-responsive">
+                        <table class="table table-sm align-middle small">
+                            <thead class="text-muted small text-uppercase">
+                                <tr><th>Time</th><th>Event</th><th>User</th><th>Detail</th><th>IP</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for e in events %}
+                                <tr>
+                                    <td class="font-monospace text-muted">{{ e.timestamp.strftime('%H:%M:%S') }}</td>
+                                    <td><span class="badge bg-secondary">{{ e.event_type }}</span></td>
+                                    <td>{{ e.username or '—' }}</td>
+                                    <td class="text-muted">{{ e.detail or '' }}</td>
+                                    <td class="text-muted font-monospace">{{ e.ip or '' }}</td>
+                                </tr>
+                                {% else %}
+                                    <tr><td colspan="5" class="text-center text-muted py-4">No events match.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="tools-tab">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6>Clear simulated attack data</h6>
+                                <p class="small text-muted">Removes all <code>simulated_attack</code> and <code>simulated_blocked</code> events from the database. Real auth events are untouched.</p>
+                                <form method="POST" action="{{ url_for('admin_clear_simulated') }}" onsubmit="return confirm('Clear all simulated event records?');">
+                                    <button class="btn btn-outline-light text-warning">Clear simulated events</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6>Reset rate limits</h6>
+                                <p class="small text-muted">Clears the in-memory rate-limit buckets. Useful if you locked yourself out testing the brute force defense.</p>
+                                <form method="POST" action="{{ url_for('admin_reset_ratelimits') }}">
+                                    <button class="btn btn-outline-light">Reset rate limits</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h6 class="text-danger">Clear ALL events</h6>
+                                <p class="small text-muted">Deletes every row in the AuthEvent table. The user table and all accounts are untouched. Useful for a fresh demo.</p>
+                                <form method="POST" action="{{ url_for('admin_clear_events') }}" onsubmit="return confirm('This deletes ALL event history. Continue?');">
+                                    <button class="btn btn-outline-light text-danger">Clear all events</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</section>
+{% endblock %}

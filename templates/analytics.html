@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}Live Analytics &middot; SecureAuth{% endblock %}
+
+{% block content %}
+<section class="py-5">
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-end mb-4 flex-wrap gap-3">
+            <div>
+                <h2 class="mb-1">Live Authentication Analytics</h2>
+                <p class="text-muted mb-0">
+                    <span class="live-dot"></span>Auto-refreshing every 2 seconds. Every signup, login, and 2FA event on this site appears below in real time.
+                </p>
+            </div>
+            <span id="status" class="badge status-live">&#x25CF; LIVE</span>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-md-3">
+                <div class="card stat-tile">
+                    <div class="card-body">
+                        <p class="text-uppercase small text-muted mb-2">Total Users</p>
+                        <h3 id="stat-users" data-target="0">0</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card stat-tile">
+                    <div class="card-body">
+                        <p class="text-uppercase small text-muted mb-2">Signups</p>
+                        <h3 id="stat-signups" class="text-success" data-target="0">0</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card stat-tile">
+                    <div class="card-body">
+                        <p class="text-uppercase small text-muted mb-2">Successful 2FA</p>
+                        <h3 id="stat-2fa-success" class="text-primary" data-target="0">0</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card stat-tile">
+                    <div class="card-body">
+                        <p class="text-uppercase small text-muted mb-2">Failed Logins</p>
+                        <h3 id="stat-fails" class="text-danger" data-target="0">0</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-lg-7">
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="mb-3">Events Over Time</h5>
+                        <canvas id="timeline-chart" height="100"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="mb-3">Event Distribution</h5>
+                        <div id="event-bars"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-5">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="mb-3">Recent Events</h5>
+                        <div id="event-feed" class="list-group small" style="max-height: 540px; overflow-y: auto;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const EVENT_LABELS = {
+    "signup_success": "Signup",
+    "signup_fail": "Failed signup",
+    "login_success_pending_2fa": "Password OK",
+    "login_fail": "Failed login",
+    "2fa_success": "2FA verified",
+    "2fa_fail": "Failed 2FA",
+    "logout": "Logout",
+    "simulated_attack": "Attacks reached check",
+    "simulated_blocked": "Attacks blocked",
+};
+const EVENT_COLORS = {
+    "signup_success": "bg-success",
+    "signup_fail": "bg-warning",
+    "login_success_pending_2fa": "bg-info",
+    "login_fail": "bg-danger",
+    "2fa_success": "bg-primary",
+    "2fa_fail": "bg-danger",
+    "logout": "bg-secondary",
+    "simulated_attack": "bg-warning",
+    "simulated_blocked": "bg-danger",
+};
+
+function animateNumber(el, target) {
+    const current = parseInt(el.textContent) || 0;
+    if (current === target) return;
+    const step = (target - current) / 12;
+    let n = current;
+    const tick = () => {
+        n += step;
+        if ((step > 0 && n >= target) || (step < 0 && n <= target)) {
+            el.textContent = target;
+        } else {
+            el.textContent = Math.round(n);
+            requestAnimationFrame(tick);
+        }
+    };
+    requestAnimationFrame(tick);
+}
+
+const timelineCtx = document.getElementById('timeline-chart').getContext('2d');
+const timeline = new Chart(timelineCtx, {
+    type: 'line',
+    data: { labels: [], datasets: [
+        { label: 'Successes', data: [], borderColor: '#4ade80', backgroundColor: 'rgba(74,222,128,0.15)', fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2 },
+        { label: 'Failures', data: [], borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.15)', fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2 },
+        { label: 'Attacks', data: [], borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.18)', fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2 },
+    ]},
+    options: {
+        animation: { duration: 400 },
+        scales: {
+            x: { ticks: { color: '#8a93a6' }, grid: { color: 'rgba(255,255,255,0.04)' } },
+            y: { ticks: { color: '#8a93a6', precision: 0 }, grid: { color: 'rgba(255,255,255,0.04)' }, beginAtZero: true },
+        },
+        plugins: { legend: { labels: { color: '#e8ecf3' } } },
+    },
+});
+
+const history = { labels: [], success: [], fail: [], attack: [] };
+let lastSnapshot = null;
+let lastPollTime = Date.now();
+
+async function refresh() {
+    const status = document.getElementById('status');
+    try {
+        const res = await fetch('/api/stats');
+        if (!res.ok) throw 0;
+        const data = await res.json();
+        status.className = 'badge status-live';
+        status.textContent = '● LIVE';
+
+        animateNumber(document.getElementById('stat-users'), data.total_users);
+        animateNumber(document.getElementById('stat-signups'), data.counts.signup_success);
+        animateNumber(document.getElementById('stat-2fa-success'), data.counts['2fa_success']);
+        animateNumber(document.getElementById('stat-fails'), data.counts.login_fail + data.counts['2fa_fail']);
+
+        // Distribution bars
+        const max = Math.max(1, ...Object.values(data.counts));
+        const bars = document.getElementById('event-bars');
+        bars.innerHTML = '';
+        for (const [type, count] of Object.entries(data.counts)) {
+            const pct = (count / max) * 100;
+            const color = EVENT_COLORS[type] || 'bg-secondary';
+            bars.insertAdjacentHTML('beforeend', `
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span>${EVENT_LABELS[type] || type}</span>
+                        <span class="text-muted font-monospace">${count}</span>
+                    </div>
+                    <div class="progress" style="height: 10px;">
+                        <div class="progress-bar ${color}" style="width: ${pct}%"></div>
+                    </div>
+                </div>`);
+        }
+
+        // Timeline (delta since last poll)
+        const now = new Date().toLocaleTimeString();
+        const successTotal = data.counts.signup_success + data.counts['2fa_success'];
+        const failTotal = data.counts.login_fail + data.counts['2fa_fail'] + data.counts.signup_fail;
+        const attackTotal = data.counts.simulated_attack + data.counts.simulated_blocked;
+        if (lastSnapshot) {
+            history.labels.push(now);
+            history.success.push(Math.max(0, successTotal - lastSnapshot.success));
+            history.fail.push(Math.max(0, failTotal - lastSnapshot.fail));
+            history.attack.push(Math.max(0, attackTotal - lastSnapshot.attack));
+            if (history.labels.length > 20) {
+                history.labels.shift();
+                history.success.shift();
+                history.fail.shift();
+                history.attack.shift();
+            }
+            timeline.data.labels = history.labels;
+            timeline.data.datasets[0].data = history.success;
+            timeline.data.datasets[1].data = history.fail;
+            timeline.data.datasets[2].data = history.attack;
+            timeline.update('none');
+        }
+        lastSnapshot = { success: successTotal, fail: failTotal, attack: attackTotal };
+
+        // Recent feed
+        const feed = document.getElementById('event-feed');
+        feed.innerHTML = '';
+        for (const e of data.recent) {
+            const ts = new Date(e.timestamp).toLocaleTimeString();
+            const color = EVENT_COLORS[e.event_type] || 'bg-secondary';
+            const label = EVENT_LABELS[e.event_type] || e.event_type;
+            feed.insertAdjacentHTML('beforeend', `
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                        <span><span class="badge ${color}">${label}</span> ${e.username || ''}</span>
+                        <small class="text-muted font-monospace">${ts}</small>
+                    </div>
+                </div>`);
+        }
+    } catch {
+        status.className = 'badge status-offline';
+        status.textContent = '● DISCONNECTED';
+    }
+}
+refresh();
+setInterval(refresh, 2000);
+</script>
+{% endblock %}

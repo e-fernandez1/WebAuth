@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero py-5">
+    <div class="container py-5 position-relative">
+        <div class="row align-items-center g-5">
+            <div class="col-lg-7">
+                <p class="text-uppercase small fw-bold mb-3" style="color: var(--accent); letter-spacing: 0.2em;">
+                    <span class="live-dot"></span>Web Security Demonstration
+                </p>
+                <h1 class="display-3 fw-bold mb-3">Secure Authentication, Live.</h1>
+                <p class="lead mb-4">
+                    A working demonstration of modern web authentication: real-time
+                    password-rule validation, salted bcrypt hashing, RFC 6238 two-factor
+                    authentication, and a live analytics dashboard streaming every event
+                    on this site.
+                </p>
+                <a href="{{ url_for('signup') }}" class="btn btn-warning btn-lg me-2">Create an Account</a>
+                <a href="{{ url_for('analytics') }}" class="btn btn-outline-light btn-lg">View Live Analytics</a>
+            </div>
+
+            <div class="col-lg-5">
+                <div class="totp-demo">
+                    <p class="text-uppercase small mb-1" style="color: var(--text-muted); letter-spacing: 0.18em;">Live One-Time Code Demo</p>
+                    <p class="small mb-3" style="color: var(--text-muted);">Illustrative &middot; rotates every 30s</p>
+                    <div class="totp-ring">
+                        <svg viewBox="0 0 100 100">
+                            <circle class="track" cx="50" cy="50" r="42"></circle>
+                            <circle class="fill" id="totp-ring-fill" cx="50" cy="50" r="42"
+                                    stroke-dasharray="263.89" stroke-dashoffset="0"></circle>
+                        </svg>
+                        <div class="seconds" id="totp-seconds">30</div>
+                    </div>
+                    <div class="totp-code" id="totp-code">------</div>
+                    <p class="small mb-0" style="color: var(--text-muted);">
+                        A visual of a one-time password rotating in real time. This site uses the same idea &mdash; delivered as a 6-digit code by email at login &mdash; so anyone with an inbox can use 2FA without installing an app.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="how" class="py-5">
+    <div class="container">
+        <h2 class="mb-2">What This Site Demonstrates</h2>
+        <p class="text-muted mb-5">Each defense below is implemented in this application and exercised when you sign up and log in.</p>
+        <div class="row g-4">
+
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <p class="text-uppercase small fw-bold mb-2" style="color: var(--accent);">Defense 1</p>
+                        <h5 class="card-title">Password Rules</h5>
+                        <p class="card-text small">
+                            Live client-side validation enforces length, character classes, and rejects common passwords. Same rules re-checked server-side.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <p class="text-uppercase small fw-bold mb-2" style="color: var(--accent);">Defense 2</p>
+                        <h5 class="card-title">bcrypt Hashing</h5>
+                        <p class="card-text small">
+                            Passwords salted and hashed with bcrypt at cost 12 before reaching storage. A breach exposes hashes, not credentials.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <p class="text-uppercase small fw-bold mb-2" style="color: var(--accent);">Defense 3</p>
+                        <h5 class="card-title">Email 2FA</h5>
+                        <p class="card-text small">
+                            Cryptographically random 6-digit codes emailed at login. Single-use, 5-minute expiration. Anyone with an inbox can use it &mdash; no authenticator app required.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <p class="text-uppercase small fw-bold mb-2" style="color: var(--accent);">Defense 4</p>
+                        <h5 class="card-title">Session Protection</h5>
+                        <p class="card-text small">
+                            Authenticated routes are gated by signed session cookies. Logout actively invalidates the session.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</section>
+
+<section id="threats" class="py-5">
+    <div class="container">
+        <h2 class="mb-4">Threats Addressed</h2>
+        <div class="row g-4">
+            <div class="col-md-4">
+                <h5>Credential Stuffing</h5>
+                <p class="small text-muted mb-0">
+                    Reused-password attacks fail because 2FA blocks login even when the password is correct.
+                </p>
+            </div>
+            <div class="col-md-4">
+                <h5>Database Breach</h5>
+                <p class="small text-muted mb-0">
+                    Stored hashes (not passwords) limit damage. bcrypt's cost factor slows offline brute force to days per password.
+                </p>
+            </div>
+            <div class="col-md-4">
+                <h5>Weak Passwords</h5>
+                <p class="small text-muted mb-0">
+                    Live validation enforces strength at account creation, before a weak credential ever enters the system.
+                </p>
+            </div>
+            <div class="col-md-4">
+                <h5>Phishing &amp; Replay</h5>
+                <p class="small text-muted mb-0">
+                    Email codes are single-use and expire in 5 minutes, so an intercepted code is useless after one verification or one window.
+                </p>
+            </div>
+            <div class="col-md-4">
+                <h5>Session Hijacking</h5>
+                <p class="small text-muted mb-0">
+                    Cryptographically signed session cookies prevent tampering. Logout actively invalidates the session.
+                </p>
+            </div>
+            <div class="col-md-4">
+                <h5>Client-Side Bypass</h5>
+                <p class="small text-muted mb-0">
+                    All checks revalidate server-side. Disabling JavaScript does not weaken security.
+                </p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="stack" class="py-5">
+    <div class="container">
+        <h2 class="mb-4">Technical Stack</h2>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <p class="mb-1"><strong>Backend</strong></p>
+                <p class="text-muted small">Python &middot; Flask &middot; Flask-Login &middot; SQLAlchemy</p>
+                <p class="mb-1"><strong>Password Hashing</strong></p>
+                <p class="text-muted small">bcrypt with per-user salt, cost factor 12</p>
+                <p class="mb-1"><strong>2FA</strong></p>
+                <p class="text-muted small">6-digit email codes &middot; secrets.randbelow &middot; SMTP delivery</p>
+            </div>
+            <div class="col-md-6">
+                <p class="mb-1"><strong>Frontend</strong></p>
+                <p class="text-muted small">Bootstrap 5 &middot; vanilla JS &middot; Chart.js</p>
+                <p class="mb-1"><strong>Database</strong></p>
+                <p class="text-muted small">SQLite via SQLAlchemy</p>
+                <p class="mb-1"><strong>Session Management</strong></p>
+                <p class="text-muted small">Flask-Login with cryptographically signed cookies</p>
+            </div>
+        </div>
+        <p class="mt-4">
+            <a href="{{ url_for('signup') }}" class="btn btn-warning">Sign up to see it in action</a>
+        </p>
+    </div>
+</section>
+
+<section id="contact" class="py-5">
+    <div class="container">
+        <h5>Project By</h5>
+        <p class="mb-1">Elian Fernandez</p>
+        <p class="text-muted small">
+            <a href="mailto:efernandez2464@gmail.com">efernandez2464@gmail.com</a>
+        </p>
+    </div>
+</section>
+
+<script>
+async function refreshTotp() {
+    try {
+        const res = await fetch('/api/demo-totp');
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById('totp-code').textContent =
+            data.code.slice(0, 3) + ' ' + data.code.slice(3);
+        document.getElementById('totp-seconds').textContent = data.seconds_left;
+        const ring = document.getElementById('totp-ring-fill');
+        const circumference = 2 * Math.PI * 42;
+        const offset = circumference * (1 - data.seconds_left / 30);
+        ring.style.strokeDashoffset = offset;
+        ring.style.stroke = data.seconds_left < 6
+            ? 'var(--danger)' : data.seconds_left < 11 ? 'var(--warning)' : 'var(--accent)';
+    } catch (e) { /* ignore */ }
+}
+refreshTotp();
+setInterval(refreshTotp, 1000);
+</script>
+{% endblock %}
