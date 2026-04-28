@@ -216,6 +216,16 @@ def ensure_columns():
             print(f"[MIGRATE] Added column auth_event.{col_name}")
     db.session.commit()
 
+    # Backfill attack_vector for events that pre-date the column.
+    backfill = db.session.execute(text(
+        "UPDATE auth_event SET attack_vector = 'simulated_brute_force' "
+        "WHERE event_type IN ('simulated_attack', 'simulated_blocked') "
+        "AND attack_vector IS NULL"
+    ))
+    if backfill.rowcount:
+        print(f"[MIGRATE] Backfilled attack_vector on {backfill.rowcount} simulated event(s).")
+    db.session.commit()
+
 
 with app.app_context():
     db.create_all()
@@ -254,24 +264,33 @@ def validate_password(pw):
     return errors
 
 
-def log_event(event_type, username=None, detail=None):
+def request_context():
+    """Snapshot of the current request: ip, ua, browser/os/device, country, city."""
     ip = request.remote_addr
     ua_string = request.headers.get("User-Agent", "")
     browser, os_family, device = parse_user_agent(ua_string)
     country, city = lookup_geo(ip)
-    vector = classify_attack_vector(event_type, ip)
+    return {
+        "ip": ip,
+        "user_agent": ua_string[:255],
+        "browser": browser,
+        "os_family": os_family,
+        "device": device,
+        "country": country,
+        "city": city,
+    }
+
+
+def log_event(event_type, username=None, detail=None, attack_vector=None, ctx=None):
+    ctx = ctx or request_context()
+    if attack_vector is None:
+        attack_vector = classify_attack_vector(event_type, ctx["ip"])
     event = AuthEvent(
         event_type=event_type,
         username=username,
         detail=detail,
-        ip=ip,
-        user_agent=ua_string[:255],
-        browser=browser,
-        os_family=os_family,
-        device=device,
-        country=country,
-        city=city,
-        attack_vector=vector,
+        attack_vector=attack_vector,
+        **ctx,
     )
     db.session.add(event)
     db.session.commit()
@@ -580,24 +599,24 @@ def simulate_bruteforce():
     attempted = 25
     reached_password_check = 0
     blocked = 0
+    ctx = request_context()
     for i in range(attempted):
         if is_rate_limited(sim_key):
             blocked += 1
-            event = AuthEvent(
-                event_type="simulated_blocked",
-                username=f"attacker_{i:02d}",
-                detail="rate_limited",
-                ip=request.remote_addr,
-            )
+            event_type = "simulated_blocked"
+            detail = "rate_limited"
         else:
             record_attempt(sim_key)
             reached_password_check += 1
-            event = AuthEvent(
-                event_type="simulated_attack",
-                username=f"attacker_{i:02d}",
-                detail="reached_password_check",
-                ip=request.remote_addr,
-            )
+            event_type = "simulated_attack"
+            detail = "reached_password_check"
+        event = AuthEvent(
+            event_type=event_type,
+            username=f"attacker_{i:02d}",
+            detail=detail,
+            attack_vector="simulated_brute_force",
+            **ctx,
+        )
         db.session.add(event)
     db.session.commit()
     LOGIN_ATTEMPTS.pop(sim_key, None)
