@@ -10,10 +10,11 @@ from functools import wraps
 import bcrypt
 import pyotp
 from dotenv import load_dotenv
+from email_validator import EmailNotValidError, validate_email
 from flask import Flask, abort, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_login import LoginManager, current_user, login_required, login_user, logout_user
 
-from models import AuthEvent, EmailCode, User, db
+from models import AuthEvent, EmailCode, PendingSignup, User, db
 
 
 def admin_required(f):
@@ -56,6 +57,23 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-me-in-prod")
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///auth.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# Session cookie hardening
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") != "development"
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
+
+
+@app.after_request
+def set_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    if request.is_secure:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 db.init_app(app)
 login_manager = LoginManager(app)
@@ -179,6 +197,33 @@ def issue_email_code(user):
     send_verification_email(user.email, code)
 
 
+def send_signup_email(to_email, code):
+    if not SMTP_HOST or not SMTP_USER or not SMTP_PASSWORD:
+        print("\n" + "=" * 60)
+        print(f"[SIGNUP CONFIRMATION]  To: {to_email}")
+        print(f"[SIGNUP CONFIRMATION]  Code: {code}")
+        print(f"[SIGNUP CONFIRMATION]  Expires in 10 minutes")
+        print("=" * 60 + "\n")
+        return True
+    msg = EmailMessage()
+    msg["Subject"] = "Confirm your SecureAuth account"
+    msg["From"] = SMTP_FROM
+    msg["To"] = to_email
+    msg.set_content(
+        f"Welcome to SecureAuth.\n\n"
+        f"Your account confirmation code is: {code}\n\n"
+        f"This code expires in 10 minutes. If you did not sign up, ignore this email."
+    )
+    try:
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        print(f"[EMAIL ERROR] {e}")
+        return False
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -195,6 +240,14 @@ def signup():
             flash("All fields are required.", "danger")
             return render_template("signup.html", rules=PASSWORD_RULES)
 
+        try:
+            validated = validate_email(email, check_deliverability=True)
+            email = validated.normalized
+        except EmailNotValidError as e:
+            flash(f"Invalid email: {e}", "danger")
+            log_event("signup_fail", username=username, detail="invalid_email")
+            return render_template("signup.html", rules=PASSWORD_RULES)
+
         if User.query.filter((User.username == username) | (User.email == email)).first():
             flash("Username or email already in use.", "danger")
             log_event("signup_fail", username=username, detail="duplicate")
@@ -207,16 +260,89 @@ def signup():
             log_event("signup_fail", username=username, detail="weak_password")
             return render_template("signup.html", rules=PASSWORD_RULES)
 
+        # Drop any prior pending signups for this username/email
+        PendingSignup.query.filter(
+            (PendingSignup.username == username) | (PendingSignup.email == email)
+        ).delete(synchronize_session=False)
+
         pw_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12))
-        user = User(username=username, email=email, password_hash=pw_hash)
-        db.session.add(user)
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        pending = PendingSignup(
+            username=username,
+            email=email,
+            password_hash=pw_hash,
+            code=code,
+            expires_at=datetime.utcnow() + timedelta(minutes=10),
+        )
+        db.session.add(pending)
         db.session.commit()
 
-        log_event("signup_success", username=username)
-        flash("Account created. Log in below — we'll email you a verification code.", "success")
-        return redirect(url_for("login"))
+        log_event("signup_pending", username=username, detail=email)
+        send_signup_email(email, code)
+
+        session["pending_signup_id"] = pending.id
+        flash(f"Confirmation code sent to {email}.", "success")
+        return redirect(url_for("confirm_signup"))
 
     return render_template("signup.html", rules=PASSWORD_RULES)
+
+
+@app.route("/confirm-signup", methods=["GET", "POST"])
+def confirm_signup():
+    pending_id = session.get("pending_signup_id")
+    if not pending_id:
+        return redirect(url_for("signup"))
+    pending = db.session.get(PendingSignup, pending_id)
+    if not pending:
+        session.pop("pending_signup_id", None)
+        flash("That signup attempt expired. Please start over.", "danger")
+        return redirect(url_for("signup"))
+
+    if datetime.utcnow() > pending.expires_at:
+        db.session.delete(pending)
+        db.session.commit()
+        session.pop("pending_signup_id", None)
+        flash("Your confirmation code expired. Please sign up again.", "danger")
+        return redirect(url_for("signup"))
+
+    if request.method == "POST":
+        code = request.form.get("code", "").strip()
+        if code == pending.code:
+            user = User(
+                username=pending.username,
+                email=pending.email,
+                password_hash=pending.password_hash,
+                is_admin=False,
+            )
+            db.session.add(user)
+            db.session.delete(pending)
+            db.session.commit()
+            session.pop("pending_signup_id", None)
+            log_event("signup_success", username=user.username, detail="email_confirmed")
+            flash("Email confirmed and account created. You can now log in.", "success")
+            return redirect(url_for("login"))
+        else:
+            log_event("signup_confirm_fail", username=pending.username)
+            flash("Invalid code.", "danger")
+
+    return render_template("confirm_signup.html", email=pending.email,
+                           username=pending.username)
+
+
+@app.route("/resend-signup-code")
+def resend_signup_code():
+    pending_id = session.get("pending_signup_id")
+    if not pending_id:
+        return redirect(url_for("signup"))
+    pending = db.session.get(PendingSignup, pending_id)
+    if not pending:
+        return redirect(url_for("signup"))
+    pending.code = f"{secrets.randbelow(1_000_000):06d}"
+    pending.expires_at = datetime.utcnow() + timedelta(minutes=10)
+    db.session.commit()
+    send_signup_email(pending.email, pending.code)
+    flash(f"A new confirmation code was sent to {pending.email}.", "success")
+    return redirect(url_for("confirm_signup"))
 
 
 @app.route("/login", methods=["GET", "POST"])

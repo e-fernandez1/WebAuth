@@ -5,142 +5,301 @@
 <section class="py-5">
     <div class="container">
         <h2 class="mb-2">Defenses &amp; Threat Model</h2>
-        <p class="text-muted mb-5">Common attacks against authentication systems and how this application defends against each.</p>
+        <p class="text-muted mb-5">Every defense currently active on this site, organized by category. Each card states the attack it mitigates and how the system blocks it.</p>
 
+        <!-- Transport -->
+        <h4 class="mb-3">Transport Layer</h4>
         <div class="card mb-5">
             <div class="card-body">
-                <h4 class="mb-3">Transport Layer Security</h4>
                 <div class="row g-4">
                     <div class="col-md-6">
                         <p class="text-muted small mb-2 text-uppercase fw-bold" style="letter-spacing: 0.12em;">Production</p>
                         <p>
-                            In production, this site is served over <strong>HTTPS</strong> with TLS 1.3.
-                            Certificates are issued by <strong>Let's Encrypt</strong>, a non-profit
-                            Certificate Authority, and chained to the
-                            <code>ISRG Root X1</code> root that ships in every modern browser's trust store.
-                            Renewals happen automatically every 90 days.
+                            HTTPS via TLS 1.3. Certificates issued by <strong>Let's Encrypt</strong> and chained
+                            to <code>ISRG Root X1</code> in every modern browser's trust store. Renewals automatic.
                         </p>
-                        <p class="small text-muted">
-                            Browser → Site Cert → R3 Intermediate → ISRG Root X1 → trust store.
-                        </p>
+                        <p class="small text-muted">Browser → Site Cert → R3 Intermediate → ISRG Root X1.</p>
                     </div>
                     <div class="col-md-6">
                         <p class="text-muted small mb-2 text-uppercase fw-bold" style="letter-spacing: 0.12em;">Local Development</p>
                         <p>
-                            Locally, the dev server runs on plain HTTP because self-signed
-                            certificates trigger browser warnings that distract from the demo.
-                            The TLS layer is provided by the production host, not the application,
-                            so deploying behind any modern reverse proxy (Render, Fly.io, Cloudflare,
-                            nginx + certbot) yields HTTPS automatically.
+                            Plain HTTP locally so self-signed certificate warnings don't distract from the demo.
+                            TLS layer is provided by the production host (Render's edge), so deploying yields
+                            HTTPS automatically.
                         </p>
-                        <p class="small text-muted">
-                            Without TLS: passwords and TOTP codes are sent in plaintext over the wire &mdash; trivial to capture on any shared network.
-                        </p>
+                        <p class="small text-muted">Without TLS: passwords sent in cleartext &mdash; trivially captured on shared networks.</p>
                     </div>
                 </div>
             </div>
         </div>
 
-        <h4 class="mb-3">Attack &times; Defense Matrix</h4>
+        <!-- Authentication -->
+        <h4 class="mb-3">Authentication &amp; Identity</h4>
         <div class="row g-3 mb-5">
             <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h6 class="mb-0">Brute Force Login</h6>
-                            <span class="badge bg-success">Active</span>
-                        </div>
-                        <p class="small text-muted mb-1"><strong>Attack:</strong> Try thousands of password guesses against a known username.</p>
-                        <p class="small text-muted mb-0"><strong>Defense:</strong> Per-IP rate limiter (5 attempts / minute) + bcrypt cost factor 12 makes each guess slow even if it reaches the hash check.</p>
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">Brute Force Login</h6>
+                        <span class="badge bg-success">Active</span>
                     </div>
-                </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> Submit thousands of password guesses against a known username.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> Per-IP rate limiter (5 attempts / minute) returns HTTP 429. Even attempts that pass hit bcrypt cost 12, slowing each guess to ~200ms.</p>
+                </div></div>
             </div>
             <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h6 class="mb-0">Credential Stuffing</h6>
-                            <span class="badge bg-success">Active</span>
-                        </div>
-                        <p class="small text-muted mb-1"><strong>Attack:</strong> Replay leaked username/password pairs from other breaches.</p>
-                        <p class="small text-muted mb-0"><strong>Defense:</strong> Email-based 2FA blocks login even when the password is correct &mdash; the attacker doesn't have access to the user's email inbox.</p>
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">Credential Stuffing</h6>
+                        <span class="badge bg-success">Active</span>
                     </div>
-                </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> Replay leaked username/password pairs from other breaches.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> Email-based 2FA blocks login even when the password is correct &mdash; the attacker doesn't have access to the user's email inbox.</p>
+                </div></div>
             </div>
             <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h6 class="mb-0">Database Breach</h6>
-                            <span class="badge bg-success">Active</span>
-                        </div>
-                        <p class="small text-muted mb-1"><strong>Attack:</strong> Steal the user table and crack credentials offline.</p>
-                        <p class="small text-muted mb-0"><strong>Defense:</strong> Passwords are stored as bcrypt hashes with per-user salts. Cost factor 12 means each guess takes ~200ms &mdash; offline brute force is days per password.</p>
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">Database Breach</h6>
+                        <span class="badge bg-success">Active</span>
                     </div>
-                </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> Steal the user table and crack credentials offline.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> bcrypt with per-user salt and cost factor 12. Each guess takes ~200ms; offline brute force is days per password. Salt defeats rainbow tables.</p>
+                </div></div>
             </div>
             <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h6 class="mb-0">Replay Attack</h6>
-                            <span class="badge bg-success">Active</span>
-                        </div>
-                        <p class="small text-muted mb-1"><strong>Attack:</strong> Capture a valid 2FA code and reuse it to log in later.</p>
-                        <p class="small text-muted mb-0"><strong>Defense:</strong> Email codes are single-use (marked <code>used = True</code> on first verification) and expire after 5 minutes. A captured code becomes worthless the moment it's redeemed or the window passes.</p>
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">Replay Attack</h6>
+                        <span class="badge bg-success">Active</span>
                     </div>
-                </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> Capture a valid 2FA code and reuse it later.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> Email codes are single-use (<code>used = True</code> on first verification) and expire after 5 minutes. A captured code is worthless after redemption or the window closes.</p>
+                </div></div>
             </div>
             <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h6 class="mb-0">Weak Password Submission</h6>
-                            <span class="badge bg-success">Active</span>
-                        </div>
-                        <p class="small text-muted mb-1"><strong>Attack:</strong> User submits "password123" expecting the system to accept it.</p>
-                        <p class="small text-muted mb-0"><strong>Defense:</strong> Server-side validation enforces length (12+), character classes, and a common-password blocklist. Client-side validation just provides feedback &mdash; the server is authoritative.</p>
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">Weak Password Submission</h6>
+                        <span class="badge bg-success">Active</span>
                     </div>
-                </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> User submits "password123" expecting acceptance.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> Server-side validation enforces 12+ characters, mixed character classes, and a common-password blocklist. Same rules re-checked even when JavaScript is disabled.</p>
+                </div></div>
             </div>
             <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h6 class="mb-0">Session Hijacking</h6>
-                            <span class="badge bg-success">Active</span>
-                        </div>
-                        <p class="small text-muted mb-1"><strong>Attack:</strong> Steal or forge a session cookie to impersonate a user.</p>
-                        <p class="small text-muted mb-0"><strong>Defense:</strong> Flask-Login uses cryptographically signed session cookies. Tampering invalidates the signature; logout actively destroys the session.</p>
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">Fake Email Signup</h6>
+                        <span class="badge bg-success">Active</span>
                     </div>
-                </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> Sign up with junk like <code>asdf@asdf</code> to skip verification.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> <code>email-validator</code> rejects malformed addresses and checks DNS MX records to reject domains that can't receive mail. Signup also requires confirming a code sent to the address.</p>
+                </div></div>
             </div>
             <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h6 class="mb-0">SQL Injection</h6>
-                            <span class="badge bg-success">Active</span>
-                        </div>
-                        <p class="small text-muted mb-1"><strong>Attack:</strong> Submit <code>' OR '1'='1</code> as a username to bypass authentication.</p>
-                        <p class="small text-muted mb-0"><strong>Defense:</strong> All database queries go through SQLAlchemy's parameterized query builder &mdash; user input is never concatenated into SQL.</p>
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">Email Spoof / Unverified Account</h6>
+                        <span class="badge bg-success">Active</span>
                     </div>
-                </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> Create an account using someone else's email.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> No User row is written until the signup confirmation code is verified. A pending signup expires after 10 minutes if the address holder never confirms.</p>
+                </div></div>
             </div>
             <div class="col-md-6">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h6 class="mb-0">Eavesdropping (MITM)</h6>
-                            <span class="badge bg-warning">Production Only</span>
-                        </div>
-                        <p class="small text-muted mb-1"><strong>Attack:</strong> Sniff network traffic on a shared Wi-Fi to read credentials in flight.</p>
-                        <p class="small text-muted mb-0"><strong>Defense:</strong> TLS 1.3 encrypts every byte in transit. Active in production via Let's Encrypt; inactive on the local dev server.</p>
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">Username Enumeration</h6>
+                        <span class="badge bg-success">Active</span>
                     </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> Probe login responses to discover which usernames exist.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> All failed login attempts return the same generic "Invalid credentials" message regardless of whether the username exists or the password was wrong.</p>
+                </div></div>
+            </div>
+        </div>
+
+        <!-- Data Protection -->
+        <h4 class="mb-3">Data Protection</h4>
+        <div class="row g-3 mb-5">
+            <div class="col-md-6">
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">SQL Injection</h6>
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> Submit <code>' OR '1'='1</code> as a username to bypass authentication.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> All database queries go through SQLAlchemy ORM, which compiles to bound parameters. User input is never concatenated into SQL.</p>
+                </div></div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">Cross-Site Scripting (XSS)</h6>
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> Inject <code>&lt;script&gt;</code> tags via a username or other form input that gets rendered later.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> Jinja2 auto-escapes all template output by default. Special characters are converted to HTML entities, so injected payloads render as inert text.</p>
+                </div></div>
+            </div>
+        </div>
+
+        <!-- Session & Browser -->
+        <h4 class="mb-3">Session &amp; Browser</h4>
+        <div class="row g-3 mb-5">
+            <div class="col-md-6">
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">Session Hijacking</h6>
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> Steal or forge a session cookie to impersonate a user.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> Flask-Login uses cryptographically signed cookies. Any tampering invalidates the signature. Logout actively destroys the session.</p>
+                </div></div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">Cookie Theft via JavaScript</h6>
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> A script (XSS, malicious extension) reads <code>document.cookie</code> and exfiltrates the session.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> Session cookie is set <code>HttpOnly</code> &mdash; not accessible from JavaScript at all.</p>
+                </div></div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">Cross-Site Request Forgery (CSRF)</h6>
+                        <span class="badge bg-success">Mitigated</span>
+                    </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> Trick a logged-in user's browser into submitting a form to this site from a third-party page.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> Session cookie set with <code>SameSite=Lax</code> &mdash; browser refuses to attach the cookie on cross-site POSTs, so a forged request hits the server unauthenticated.</p>
+                </div></div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">Clickjacking</h6>
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> Embed this site in a hidden iframe on a malicious page and trick users into clicking sensitive controls.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> <code>X-Frame-Options: DENY</code> header prevents the site from being framed by any origin.</p>
+                </div></div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">MIME-Sniff Confusion</h6>
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> Upload a file with a misleading extension that browsers interpret as something else (e.g., HTML hosted as an image).</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> <code>X-Content-Type-Options: nosniff</code> forces browsers to honor the declared Content-Type.</p>
+                </div></div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">Eavesdropping (MITM)</h6>
+                        <span class="badge bg-warning">Production Only</span>
+                    </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> Sniff network traffic on shared Wi-Fi to read credentials in flight.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> TLS 1.3 encrypts every byte in transit. <code>Strict-Transport-Security</code> header tells browsers to require HTTPS for the next year.</p>
+                </div></div>
+            </div>
+        </div>
+
+        <!-- Authorization & Audit -->
+        <h4 class="mb-3">Authorization &amp; Audit</h4>
+        <div class="row g-3 mb-5">
+            <div class="col-md-6">
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">Privilege Escalation</h6>
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> A regular user calls an admin endpoint directly via crafted HTTP.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> Custom <code>@admin_required</code> decorator wraps every admin route. Non-admins get HTTP 403.</p>
+                </div></div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">Admin Self-Lockout</h6>
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> An admin accidentally demotes or deletes themselves, leaving no admin in the system.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> Self-action guards in admin routes refuse to act when <code>user_id == current_user.id</code>.</p>
+                </div></div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">Insufficient Audit Trail</h6>
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> An attacker takes admin actions and the log doesn't capture who did what.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> Every signup, login, 2FA, logout, rate-limit, and admin action is written to the <code>AuthEvent</code> table with username, IP, timestamp, and detail. Streamed live to <code>/analytics</code>.</p>
+                </div></div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">Information Leak via Referrer</h6>
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                    <p class="small text-muted mb-1"><strong>Attack:</strong> A user clicks an external link; the destination sees the full URL of where they came from.</p>
+                    <p class="small text-muted mb-0"><strong>Defense:</strong> <code>Referrer-Policy: strict-origin-when-cross-origin</code> only sends the origin (no path or query) to cross-site navigations.</p>
+                </div></div>
+            </div>
+        </div>
+
+        <!-- Headers reference -->
+        <h4 class="mb-3">HTTP Security Headers Set on Every Response</h4>
+        <div class="card mb-5">
+            <div class="card-body">
+                <div class="table-responsive">
+                <table class="table align-middle small mb-0">
+                    <thead class="text-muted small text-uppercase">
+                        <tr><th>Header</th><th>Value</th><th>What it does</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="font-monospace">X-Content-Type-Options</td>
+                            <td class="font-monospace">nosniff</td>
+                            <td class="text-muted">Disables browser MIME-type sniffing</td>
+                        </tr>
+                        <tr>
+                            <td class="font-monospace">X-Frame-Options</td>
+                            <td class="font-monospace">DENY</td>
+                            <td class="text-muted">Blocks the site from being embedded in any iframe (clickjacking)</td>
+                        </tr>
+                        <tr>
+                            <td class="font-monospace">Referrer-Policy</td>
+                            <td class="font-monospace">strict-origin-when-cross-origin</td>
+                            <td class="text-muted">Only leaks the origin (not the path) to other sites</td>
+                        </tr>
+                        <tr>
+                            <td class="font-monospace">Permissions-Policy</td>
+                            <td class="font-monospace">geolocation=(), microphone=(), camera=()</td>
+                            <td class="text-muted">Disables sensitive browser APIs the site doesn't use</td>
+                        </tr>
+                        <tr>
+                            <td class="font-monospace">Strict-Transport-Security</td>
+                            <td class="font-monospace">max-age=31536000; includeSubDomains</td>
+                            <td class="text-muted">Forces HTTPS for one year (only sent over HTTPS)</td>
+                        </tr>
+                        <tr>
+                            <td class="font-monospace">Set-Cookie</td>
+                            <td class="font-monospace">HttpOnly; SameSite=Lax; Secure (prod)</td>
+                            <td class="text-muted">Session cookie is unreadable by JS, blocks cross-site sends, HTTPS-only in production</td>
+                        </tr>
+                    </tbody>
+                </table>
                 </div>
             </div>
         </div>
 
+        <!-- Live simulator -->
         <div class="card mb-5">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-3">
@@ -209,9 +368,7 @@ document.getElementById('run-sim').addEventListener('click', async (e) => {
         const tick = (id, target) => {
             const el = document.getElementById(id);
             let n = 0;
-            const step = () => {
-                if (n < target) { n++; el.textContent = n; requestAnimationFrame(step); }
-            };
+            const step = () => { if (n < target) { n++; el.textContent = n; requestAnimationFrame(step); } };
             step();
         };
         tick('sim-attempted', data.attempted);
