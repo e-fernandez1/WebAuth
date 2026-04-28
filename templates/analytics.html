@@ -110,6 +110,12 @@ const EVENT_COLORS = {
     "simulated_blocked": "bg-danger",
 };
 
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => (
+        {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]
+    ));
+}
+
 function animateNumber(el, target) {
     const current = parseInt(el.textContent) || 0;
     if (current === target) return;
@@ -168,10 +174,11 @@ async function refresh() {
         for (const [type, count] of Object.entries(data.counts)) {
             const pct = (count / max) * 100;
             const color = EVENT_COLORS[type] || 'bg-secondary';
+            const label = EVENT_LABELS[type] || type;
             bars.insertAdjacentHTML('beforeend', `
                 <div class="mb-3">
                     <div class="d-flex justify-content-between small mb-1">
-                        <span>${EVENT_LABELS[type] || type}</span>
+                        <span>${escapeHtml(label)}</span>
                         <span class="text-muted font-monospace">${count}</span>
                     </div>
                     <div class="progress" style="height: 10px;">
@@ -216,8 +223,8 @@ async function refresh() {
             feed.insertAdjacentHTML('beforeend', `
                 <div class="list-group-item">
                     <div class="d-flex justify-content-between">
-                        <span><span class="badge ${color}">${label}</span> ${e.username || ''}</span>
-                        <small class="text-muted font-monospace">${ts}</small>
+                        <span><span class="badge ${color}">${escapeHtml(label)}</span> ${escapeHtml(e.username || '')}</span>
+                        <small class="text-muted font-monospace">${escapeHtml(ts)}</small>
                     </div>
                 </div>`);
         }
