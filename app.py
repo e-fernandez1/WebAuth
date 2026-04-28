@@ -593,6 +593,143 @@ def explained():
     return render_template("explained.html")
 
 
+def _add_sim_event(ctx, event_type, username, detail, vector):
+    db.session.add(AuthEvent(
+        event_type=event_type,
+        username=username[:64],
+        detail=detail[:255] if detail else None,
+        attack_vector=vector,
+        **ctx,
+    ))
+
+
+@app.route("/api/simulate-credential-stuffing", methods=["POST"])
+def simulate_credential_stuffing():
+    pairs = [
+        ("admin", "password"), ("admin", "admin123"),
+        ("john", "letmein"),   ("alice", "alice2021"),
+        ("bob", "qwerty123"),  ("user1", "Welcome2023"),
+        ("test", "test123"),   ("guest", "guest"),
+        ("demo", "demo123"),   ("root", "toor"),
+    ]
+    ctx = request_context()
+    for username, _ in pairs:
+        _add_sim_event(ctx, "simulated_attack", username,
+                       "leaked_credential_pair", "credential_stuffing")
+    db.session.commit()
+    return jsonify({
+        "attempted": len(pairs),
+        "compromised": 0,
+        "defense": "bcrypt rejects every wrong-password hash. Even if a password matched, email-based 2FA blocks login.",
+    })
+
+
+@app.route("/api/simulate-weak-passwords", methods=["POST"])
+def simulate_weak_passwords():
+    weak = ["password", "12345678", "qwerty", "abc123", "password123",
+            "letmein", "monkey", "hello", "Test1", "P@ss"]
+    ctx = request_context()
+    rejected = 0
+    for pw in weak:
+        errors = validate_password(pw)
+        if errors:
+            rejected += 1
+            _add_sim_event(ctx, "simulated_attack", f"weak_signup_{rejected:02d}",
+                           f"rejected: {errors[0]}", "weak_password_attempt")
+    db.session.commit()
+    return jsonify({
+        "attempted": len(weak),
+        "rejected": rejected,
+        "defense": "Server-side validation enforces 12+ chars, mixed case, digit, symbol, and a common-password blocklist. Same rules even with JavaScript disabled.",
+    })
+
+
+@app.route("/api/simulate-fake-emails", methods=["POST"])
+def simulate_fake_emails():
+    fake = ["admin", "user@", "@domain.com", "user@@double.com",
+            "user@invalid", "fake@nope12345.xyz", "spaces in@email.com",
+            "no-tld@localhost"]
+    ctx = request_context()
+    rejected = 0
+    for addr in fake:
+        try:
+            validate_email(addr, check_deliverability=False)
+        except EmailNotValidError as e:
+            rejected += 1
+            _add_sim_event(ctx, "simulated_attack", f"fake_signup_{rejected:02d}",
+                           f"{addr}: {str(e)[:80]}", "fake_email_attempt")
+    db.session.commit()
+    return jsonify({
+        "attempted": len(fake),
+        "rejected": rejected,
+        "defense": "email-validator parses every address and rejects malformed inputs. Real signups also require confirming a code sent to the address.",
+    })
+
+
+@app.route("/api/simulate-sqli", methods=["POST"])
+def simulate_sqli():
+    payloads = [
+        "' OR '1'='1",
+        "admin' --",
+        "' UNION SELECT * FROM user --",
+        "1' OR '1'='1' --",
+        "'; DROP TABLE user; --",
+        "admin'); DROP TABLE user; --",
+        "\" OR \"\"=\"",
+        "' OR sleep(5) --",
+    ]
+    ctx = request_context()
+    for payload in payloads:
+        result = User.query.filter_by(username=payload).first()
+        _add_sim_event(ctx, "simulated_attack", payload,
+                       "treated_as_literal_string_no_match" if result is None else "matched",
+                       "sql_injection_attempt")
+    db.session.commit()
+    return jsonify({
+        "attempted": len(payloads),
+        "successful": 0,
+        "defense": "SQLAlchemy ORM parameterizes every query. Payloads are passed as bound values, never as SQL syntax.",
+    })
+
+
+@app.route("/api/simulate-xss", methods=["POST"])
+def simulate_xss():
+    payloads = [
+        "<script>alert(1)</script>",
+        "<img src=x onerror=alert(1)>",
+        "javascript:alert(1)",
+        "<svg onload=alert(1)>",
+        "'\"><script>alert(document.cookie)</script>",
+        "<iframe src=javascript:alert(1)>",
+    ]
+    ctx = request_context()
+    for p in payloads:
+        _add_sim_event(ctx, "simulated_attack", p,
+                       "would_render_as_inert_text", "xss_attempt")
+    db.session.commit()
+    return jsonify({
+        "attempted": len(payloads),
+        "executed": 0,
+        "defense": "Jinja2 auto-escapes every template variable. < > \" ' & become HTML entities, so payloads render as harmless text.",
+    })
+
+
+@app.route("/api/simulate-2fa-bypass", methods=["POST"])
+def simulate_2fa_bypass():
+    attempts = 12
+    ctx = request_context()
+    for i in range(attempts):
+        guess = f"{secrets.randbelow(1_000_000):06d}"
+        _add_sim_event(ctx, "simulated_attack", f"attacker_has_pw_{i:02d}",
+                       f"random_code:{guess}", "2fa_bypass_attempt")
+    db.session.commit()
+    return jsonify({
+        "attempted": attempts,
+        "successful": 0,
+        "defense": "1-in-1,000,000 chance per random guess. Codes are single-use and expire after 5 minutes, so an attacker has only seconds to brute force the right code.",
+    })
+
+
 @app.route("/api/simulate-bruteforce", methods=["POST"])
 def simulate_bruteforce():
     sim_key = f"sim-{datetime.utcnow().timestamp()}"
@@ -782,13 +919,23 @@ def admin_clear_events():
 @app.route("/api/stats")
 def api_stats():
     cutoff = datetime.utcnow() - timedelta(hours=24)
-    counts = {}
-    for event_type in [
-        "signup_success", "signup_fail", "login_success_pending_2fa",
-        "login_fail", "2fa_success", "2fa_fail", "logout",
+
+    # Dynamic count of every event type that has rows
+    rows = (
+        db.session.query(AuthEvent.event_type, db.func.count(AuthEvent.id))
+        .group_by(AuthEvent.event_type)
+        .all()
+    )
+    counts = {event_type: count for event_type, count in rows}
+
+    # Ensure every key the frontend expects exists, even if zero
+    for et in (
+        "signup_success", "signup_fail", "signup_pending", "signup_confirm_fail",
+        "login_success_pending_2fa", "login_fail", "rate_limited",
+        "2fa_success", "2fa_fail", "logout", "admin_action",
         "simulated_attack", "simulated_blocked",
-    ]:
-        counts[event_type] = AuthEvent.query.filter_by(event_type=event_type).count()
+    ):
+        counts.setdefault(et, 0)
 
     recent = AuthEvent.query.order_by(AuthEvent.timestamp.desc()).limit(20).all()
     last_hour = AuthEvent.query.filter(AuthEvent.timestamp >= cutoff).count()

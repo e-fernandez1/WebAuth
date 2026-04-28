@@ -80,23 +80,31 @@
 <script>
 const EVENT_LABELS = {
     "signup_success": "Signup",
+    "signup_pending": "Signup pending",
     "signup_fail": "Failed signup",
+    "signup_confirm_fail": "Failed signup confirm",
     "login_success_pending_2fa": "Password OK",
     "login_fail": "Failed login",
+    "rate_limited": "Rate limited",
     "2fa_success": "2FA verified",
     "2fa_fail": "Failed 2FA",
     "logout": "Logout",
-    "simulated_attack": "Attacks reached check",
-    "simulated_blocked": "Attacks blocked",
+    "admin_action": "Admin action",
+    "simulated_attack": "Attack simulation",
+    "simulated_blocked": "Attack blocked",
 };
 const EVENT_COLORS = {
     "signup_success": "bg-success",
+    "signup_pending": "bg-info",
     "signup_fail": "bg-warning",
+    "signup_confirm_fail": "bg-danger",
     "login_success_pending_2fa": "bg-info",
     "login_fail": "bg-danger",
+    "rate_limited": "bg-danger",
     "2fa_success": "bg-primary",
     "2fa_fail": "bg-danger",
     "logout": "bg-secondary",
+    "admin_action": "bg-info",
     "simulated_attack": "bg-warning",
     "simulated_blocked": "bg-danger",
 };
@@ -173,11 +181,18 @@ async function refresh() {
                 </div>`);
         }
 
-        // Timeline (delta since last poll)
+        // Timeline (delta since last poll) — sum across event types so new ones just work
         const now = new Date().toLocaleTimeString();
-        const successTotal = data.counts.signup_success + data.counts['2fa_success'];
-        const failTotal = data.counts.login_fail + data.counts['2fa_fail'] + data.counts.signup_fail;
-        const attackTotal = data.counts.simulated_attack + data.counts.simulated_blocked;
+        let successTotal = 0, failTotal = 0, attackTotal = 0;
+        for (const [type, count] of Object.entries(data.counts)) {
+            if (type.startsWith('simulated_')) {
+                attackTotal += count;
+            } else if (type.endsWith('_fail') || type === 'rate_limited') {
+                failTotal += count;
+            } else if (type.endsWith('_success')) {
+                successTotal += count;
+            }
+        }
         if (lastSnapshot) {
             history.labels.push(now);
             history.success.push(Math.max(0, successTotal - lastSnapshot.success));
