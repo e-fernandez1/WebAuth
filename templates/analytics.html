@@ -260,6 +260,7 @@ const yaxisChart = new Chart(yaxisCtx, {
 });
 
 const PX_PER_BAR = 26;
+let followLatest = true;
 
 async function refresh() {
     const status = document.getElementById('status');
@@ -307,8 +308,8 @@ async function refresh() {
         const innerEl = document.getElementById('timeline-inner');
         const wantedWidth = Math.max(scrollEl.clientWidth, tl.length * PX_PER_BAR);
 
-        // Preserve auto-scroll-to-right unless user has scrolled away from the edge
-        const atRight = (scrollEl.scrollLeft + scrollEl.clientWidth) >= (scrollEl.scrollWidth - 8);
+        // Capture user's follow intent before changing chart width
+        const wasFollowing = followLatest;
 
         if (innerEl.style.width !== wantedWidth + 'px') {
             innerEl.style.width = wantedWidth + 'px';
@@ -332,9 +333,11 @@ async function refresh() {
         yaxisChart.options.scales.y.max = niceMax;
 
         // Auto-grow the y-axis column to fit the widest tick label.
-        // ~10px per digit + 24px padding, minimum 56px.
-        const digits = String(niceMax).length;
-        const yaxisColWidth = Math.max(56, digits * 11 + 28);
+        // Measure text width directly so we never undersize.
+        yaxisCtx.font = '12px Inter, system-ui, -apple-system, "Segoe UI", sans-serif';
+        const textWidth = yaxisCtx.measureText(String(niceMax)).width;
+        // Layout = label text + tick mark + paddings on both sides
+        const yaxisColWidth = Math.max(60, Math.ceil(textWidth) + 48);
         const yaxisCol = document.querySelector('.timeline-yaxis-col');
         if (yaxisCol && yaxisCol.style.width !== yaxisColWidth + 'px') {
             yaxisCol.style.width = yaxisColWidth + 'px';
@@ -344,7 +347,7 @@ async function refresh() {
         timeline.update('none');
         yaxisChart.update('none');
 
-        if (atRight) {
+        if (wasFollowing) {
             scrollEl.scrollLeft = scrollEl.scrollWidth;
         }
 
@@ -368,6 +371,13 @@ async function refresh() {
         status.textContent = '● DISCONNECTED';
     }
 }
+// Track follow mode: enabled when user is at (or very near) the right edge.
+// Once they scroll left, auto-scroll stays off until they scroll back to the right.
+document.getElementById('timeline-scroll').addEventListener('scroll', (e) => {
+    const el = e.currentTarget;
+    followLatest = (el.scrollLeft + el.clientWidth) >= (el.scrollWidth - 4);
+});
+
 refresh();
 setInterval(refresh, 2000);
 </script>
