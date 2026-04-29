@@ -55,21 +55,54 @@
                     <div class="card-body">
                         <h5 class="mb-1">Events Timeline</h5>
                         <p class="small text-muted mb-3">Every event since the server started, stacked by category. Bucket size auto-scales (5 s, 30 s, 1 min, or 5 min) as history grows. <strong>Scroll horizontally</strong> to see older events; newest activity stays on the right.</p>
-                        <div id="timeline-scroll" class="timeline-scrollbar">
-                            <div id="timeline-inner">
-                                <canvas id="timeline-chart"></canvas>
+
+                        <!-- Static legend (doesn't scroll) -->
+                        <div class="d-flex gap-4 mb-3 small justify-content-center" style="color: var(--text);">
+                            <span><span class="legend-dot" style="background:#4ade80"></span> Successes</span>
+                            <span><span class="legend-dot" style="background:#f87171"></span> Failures</span>
+                            <span><span class="legend-dot" style="background:#fbbf24"></span> Attacks</span>
+                        </div>
+
+                        <!-- Sticky y-axis + scrollable chart -->
+                        <div class="timeline-wrap">
+                            <div class="timeline-yaxis-col">
+                                <canvas id="timeline-yaxis"></canvas>
+                            </div>
+                            <div id="timeline-scroll" class="timeline-scrollbar">
+                                <div id="timeline-inner">
+                                    <canvas id="timeline-chart"></canvas>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
                 <style>
+                    .legend-dot {
+                        display: inline-block;
+                        width: 12px;
+                        height: 12px;
+                        border-radius: 3px;
+                        margin-right: 6px;
+                        vertical-align: middle;
+                    }
+                    .timeline-wrap {
+                        display: flex;
+                        align-items: stretch;
+                        height: 260px;
+                    }
+                    .timeline-yaxis-col {
+                        width: 56px;
+                        flex-shrink: 0;
+                        position: relative;
+                    }
                     #timeline-scroll {
+                        flex: 1;
                         overflow-x: auto;
                         overflow-y: hidden;
                         padding-bottom: 6px;
                     }
                     #timeline-inner {
-                        height: 240px;
+                        height: 100%;
                         min-width: 100%;
                         position: relative;
                     }
@@ -172,6 +205,7 @@ const timeline = new Chart(timelineCtx, {
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
+        layout: { padding: { left: 0 } },
         scales: {
             x: {
                 stacked: true,
@@ -180,15 +214,40 @@ const timeline = new Chart(timelineCtx, {
             },
             y: {
                 stacked: true,
-                ticks: { color: '#8a93a6', precision: 0 },
+                ticks: { display: false },
                 grid: { color: 'rgba(255,255,255,0.04)' },
                 beginAtZero: true,
+                border: { display: false },
             },
         },
         plugins: {
-            legend: { labels: { color: '#e8ecf3', usePointStyle: true, pointStyle: 'rectRounded' } },
+            legend: { display: false },
             tooltip: { mode: 'index', intersect: false },
         },
+    },
+});
+
+// Sticky y-axis: a tiny chart that only renders the y-axis with the same scale.
+const yaxisCtx = document.getElementById('timeline-yaxis').getContext('2d');
+const yaxisChart = new Chart(yaxisCtx, {
+    type: 'bar',
+    data: { labels: [''], datasets: [{ data: [0], backgroundColor: 'transparent' }] },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        layout: { padding: 0 },
+        scales: {
+            x: { display: false },
+            y: {
+                ticks: { color: '#8a93a6', precision: 0 },
+                grid: { display: false },
+                border: { display: false },
+                beginAtZero: true,
+                position: 'right',
+            },
+        },
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
     },
 });
 
@@ -253,7 +312,19 @@ async function refresh() {
         timeline.data.datasets[0].data = successData;
         timeline.data.datasets[1].data = failData;
         timeline.data.datasets[2].data = attackData;
+
+        // Compute the max stacked total so the sticky y-axis matches the main chart
+        let maxStack = 0;
+        for (let i = 0; i < tl.length; i++) {
+            const t = (successData[i] || 0) + (failData[i] || 0) + (attackData[i] || 0);
+            if (t > maxStack) maxStack = t;
+        }
+        const niceMax = Math.max(5, Math.ceil(maxStack * 1.1));
+        timeline.options.scales.y.max = niceMax;
+        yaxisChart.options.scales.y.max = niceMax;
+
         timeline.update('none');
+        yaxisChart.update('none');
 
         if (atRight) {
             scrollEl.scrollLeft = scrollEl.scrollWidth;
