@@ -1029,12 +1029,51 @@ def api_stats():
     last_hour = AuthEvent.query.filter(AuthEvent.timestamp >= cutoff_24h).count()
     user_count = User.query.count()
 
+    # Time-bucketed timeline since the server started (= earliest event in DB).
+    # Bucket size auto-scales with duration so the chart stays a manageable width.
+    earliest = db.session.query(db.func.min(AuthEvent.timestamp)).scalar()
+    if earliest is None:
+        earliest = datetime.utcnow() - timedelta(seconds=30)
+    duration_minutes = max(1, (datetime.utcnow() - earliest).total_seconds() / 60)
+    if duration_minutes < 30:
+        bucket_seconds = 5
+    elif duration_minutes < 120:
+        bucket_seconds = 30
+    elif duration_minutes < 720:
+        bucket_seconds = 60
+    else:
+        bucket_seconds = 300  # 5-min buckets for very long-running servers
+
+    timeline_events = (
+        db.session.query(AuthEvent.timestamp, AuthEvent.event_type)
+        .filter(AuthEvent.timestamp >= earliest)
+        .all()
+    )
+    buckets = {}
+    for ts, et in timeline_events:
+        b = int(ts.timestamp()) // bucket_seconds * bucket_seconds
+        slot = buckets.setdefault(b, {"success": 0, "fail": 0, "attack": 0})
+        if et.startswith("simulated_"):
+            slot["attack"] += 1
+        elif et.endswith("_success"):
+            slot["success"] += 1
+        elif et.endswith("_fail") or et == "rate_limited":
+            slot["fail"] += 1
+    now_b = int(datetime.utcnow().timestamp()) // bucket_seconds * bucket_seconds
+    start_b = int(earliest.timestamp()) // bucket_seconds * bucket_seconds
+    timeline = []
+    for b in range(start_b, now_b + bucket_seconds, bucket_seconds):
+        slot = buckets.get(b, {"success": 0, "fail": 0, "attack": 0})
+        timeline.append({"t": b, **slot})
+
     return jsonify({
         "counts": counts,
         "recent_counts": recent_counts,
         "recent": [e.to_dict() for e in recent],
         "events_last_24h": last_hour,
         "total_users": user_count,
+        "timeline": timeline,
+        "bucket_seconds": bucket_seconds,
     })
 
 

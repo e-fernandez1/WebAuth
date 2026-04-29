@@ -53,9 +53,13 @@
             <div class="col-lg-7">
                 <div class="card mb-4">
                     <div class="card-body">
-                        <h5 class="mb-1">Events in the Last 60 Seconds</h5>
-                        <p class="small text-muted mb-3">Each line shows how many events of that type occurred in the trailing 60-second window. Run a simulator, watch the line jump, then drop back to zero a minute later.</p>
-                        <canvas id="timeline-chart" height="100"></canvas>
+                        <h5 class="mb-1">Events Timeline</h5>
+                        <p class="small text-muted mb-3">Every event since the server started, stacked by category. Bucket size auto-scales (5 s, 30 s, 1 min, or 5 min) as history grows. Scroll horizontally to see older events; newest activity stays on the right.</p>
+                        <div id="timeline-scroll" style="overflow-x: auto; overflow-y: hidden;">
+                            <div id="timeline-inner" style="height: 220px; min-width: 100%;">
+                                <canvas id="timeline-chart"></canvas>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="card">
@@ -83,7 +87,7 @@ const EVENT_LABELS = {
     "signup_success": "Signup",
     "signup_pending": "Signup pending",
     "signup_fail": "Failed signup",
-    "signup_confirm_fail": "Failed signup confirm",
+    "signup_confirm_fail": "Failed signup confirmation",
     "login_success_pending_2fa": "Password OK",
     "login_fail": "Failed login",
     "rate_limited": "Rate limited",
@@ -91,7 +95,7 @@ const EVENT_LABELS = {
     "2fa_fail": "Failed 2FA",
     "logout": "Logout",
     "admin_action": "Admin action",
-    "simulated_attack": "Attack simulation",
+    "simulated_attack": "Attack reached check",
     "simulated_blocked": "Attack blocked",
 };
 const EVENT_COLORS = {
@@ -142,11 +146,13 @@ const timeline = new Chart(timelineCtx, {
         { label: 'Attacks',   data: [], backgroundColor: 'rgba(251,191,36,0.9)',  borderColor: '#fbbf24', borderWidth: 0, borderRadius: 2 },
     ]},
     options: {
-        animation: { duration: 250 },
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
         scales: {
             x: {
                 stacked: true,
-                ticks: { color: '#8a93a6', maxRotation: 0, autoSkipPadding: 16 },
+                ticks: { color: '#8a93a6', maxRotation: 0, autoSkip: true, autoSkipPadding: 24 },
                 grid: { display: false },
             },
             y: {
@@ -163,7 +169,7 @@ const timeline = new Chart(timelineCtx, {
     },
 });
 
-const history = { labels: [], success: [], fail: [], attack: [] };
+const PX_PER_BAR = 14;
 
 async function refresh() {
     const status = document.getElementById('status');
@@ -199,31 +205,31 @@ async function refresh() {
                 </div>`);
         }
 
-        // Timeline shows events in the trailing 60-second window from the server.
-        // Sum any matching event type so new categories work automatically.
-        const recent = data.recent_counts || {};
-        let successWin = 0, failWin = 0, attackWin = 0;
-        for (const [type, count] of Object.entries(recent)) {
-            if (type.startsWith('simulated_')) attackWin += count;
-            else if (type.endsWith('_fail') || type === 'rate_limited') failWin += count;
-            else if (type.endsWith('_success')) successWin += count;
-        }
-        const now = new Date().toLocaleTimeString();
-        history.labels.push(now);
-        history.success.push(successWin);
-        history.fail.push(failWin);
-        history.attack.push(attackWin);
-        if (history.labels.length > 30) {
-            history.labels.shift();
-            history.success.shift();
-            history.fail.shift();
-            history.attack.shift();
-        }
-        timeline.data.labels = history.labels;
-        timeline.data.datasets[0].data = history.success;
-        timeline.data.datasets[1].data = history.fail;
-        timeline.data.datasets[2].data = history.attack;
+        // Timeline: render server-provided time buckets as a stacked bar chart.
+        // Width grows with bucket count; outer container is horizontally scrollable.
+        const tl = data.timeline || [];
+        const labels = tl.map(b => new Date(b.t * 1000).toLocaleTimeString());
+        const successData = tl.map(b => b.success);
+        const failData = tl.map(b => b.fail);
+        const attackData = tl.map(b => b.attack);
+
+        const scrollEl = document.getElementById('timeline-scroll');
+        const innerEl = document.getElementById('timeline-inner');
+        const wantedWidth = Math.max(scrollEl.clientWidth, tl.length * PX_PER_BAR);
+        innerEl.style.width = wantedWidth + 'px';
+
+        // Preserve auto-scroll-to-right unless the user has manually scrolled left
+        const atRight = scrollEl.scrollLeft + scrollEl.clientWidth >= scrollEl.scrollWidth - 4;
+
+        timeline.data.labels = labels;
+        timeline.data.datasets[0].data = successData;
+        timeline.data.datasets[1].data = failData;
+        timeline.data.datasets[2].data = attackData;
         timeline.update('none');
+
+        if (atRight) {
+            scrollEl.scrollLeft = scrollEl.scrollWidth;
+        }
 
         // Recent feed
         const feed = document.getElementById('event-feed');
