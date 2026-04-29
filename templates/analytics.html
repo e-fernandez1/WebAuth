@@ -94,6 +94,7 @@
                         width: 56px;
                         flex-shrink: 0;
                         position: relative;
+                        transition: width 0.15s ease;
                     }
                     #timeline-scroll {
                         flex: 1;
@@ -228,17 +229,24 @@ const timeline = new Chart(timelineCtx, {
 });
 
 // Sticky y-axis: a tiny chart that only renders the y-axis with the same scale.
+// The x-axis is technically rendered (with everything invisible) so the layout
+// reserves the same bottom space as the main chart — keeping y=0 aligned.
 const yaxisCtx = document.getElementById('timeline-yaxis').getContext('2d');
 const yaxisChart = new Chart(yaxisCtx, {
     type: 'bar',
-    data: { labels: [''], datasets: [{ data: [0], backgroundColor: 'transparent' }] },
+    data: { labels: [' '], datasets: [{ data: [0], backgroundColor: 'transparent' }] },
     options: {
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
         layout: { padding: 0 },
         scales: {
-            x: { display: false },
+            x: {
+                display: true,
+                ticks: { color: 'transparent', maxRotation: 0, autoSkip: false },
+                grid: { display: false },
+                border: { display: false },
+            },
             y: {
                 ticks: { color: '#8a93a6', precision: 0 },
                 grid: { display: false },
@@ -322,6 +330,16 @@ async function refresh() {
         const niceMax = Math.max(5, Math.ceil(maxStack * 1.1));
         timeline.options.scales.y.max = niceMax;
         yaxisChart.options.scales.y.max = niceMax;
+
+        // Auto-grow the y-axis column to fit the widest tick label.
+        // ~10px per digit + 24px padding, minimum 56px.
+        const digits = String(niceMax).length;
+        const yaxisColWidth = Math.max(56, digits * 11 + 28);
+        const yaxisCol = document.querySelector('.timeline-yaxis-col');
+        if (yaxisCol && yaxisCol.style.width !== yaxisColWidth + 'px') {
+            yaxisCol.style.width = yaxisColWidth + 'px';
+            yaxisChart.resize();
+        }
 
         timeline.update('none');
         yaxisChart.update('none');
