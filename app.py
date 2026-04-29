@@ -123,6 +123,8 @@ LOGIN_ATTEMPTS = defaultdict(list)
 RATE_LIMIT_WINDOW = timedelta(minutes=1)
 RATE_LIMIT_MAX = 5
 
+SERVER_START_TIME = datetime.utcnow()
+
 
 def is_rate_limited(key):
     now = datetime.utcnow()
@@ -1029,12 +1031,11 @@ def api_stats():
     last_hour = AuthEvent.query.filter(AuthEvent.timestamp >= cutoff_24h).count()
     user_count = User.query.count()
 
-    # Time-bucketed timeline since the server started (= earliest event in DB).
-    # Bucket size auto-scales with duration so the chart stays a manageable width.
-    earliest = db.session.query(db.func.min(AuthEvent.timestamp)).scalar()
-    if earliest is None:
-        earliest = datetime.utcnow() - timedelta(seconds=30)
-    duration_minutes = max(1, (datetime.utcnow() - earliest).total_seconds() / 60)
+    # Time-bucketed timeline. Spans from server boot (= when the analytics first went live)
+    # to now. Auto-scales bucket size as uptime grows.
+    timeline_start = SERVER_START_TIME
+
+    duration_minutes = max(1, (datetime.utcnow() - timeline_start).total_seconds() / 60)
     if duration_minutes < 30:
         bucket_seconds = 5
     elif duration_minutes < 120:
@@ -1046,7 +1047,7 @@ def api_stats():
 
     timeline_events = (
         db.session.query(AuthEvent.timestamp, AuthEvent.event_type)
-        .filter(AuthEvent.timestamp >= earliest)
+        .filter(AuthEvent.timestamp >= timeline_start)
         .all()
     )
     buckets = {}
@@ -1060,7 +1061,7 @@ def api_stats():
         elif et.endswith("_fail") or et == "rate_limited":
             slot["fail"] += 1
     now_b = int(datetime.utcnow().timestamp()) // bucket_seconds * bucket_seconds
-    start_b = int(earliest.timestamp()) // bucket_seconds * bucket_seconds
+    start_b = int(timeline_start.timestamp()) // bucket_seconds * bucket_seconds
     timeline = []
     for b in range(start_b, now_b + bucket_seconds, bucket_seconds):
         slot = buckets.get(b, {"success": 0, "fail": 0, "attack": 0})

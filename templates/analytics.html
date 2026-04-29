@@ -54,14 +54,37 @@
                 <div class="card mb-4">
                     <div class="card-body">
                         <h5 class="mb-1">Events Timeline</h5>
-                        <p class="small text-muted mb-3">Every event since the server started, stacked by category. Bucket size auto-scales (5 s, 30 s, 1 min, or 5 min) as history grows. Scroll horizontally to see older events; newest activity stays on the right.</p>
-                        <div id="timeline-scroll" style="overflow-x: auto; overflow-y: hidden;">
-                            <div id="timeline-inner" style="height: 220px; min-width: 100%;">
+                        <p class="small text-muted mb-3">Every event since the server started, stacked by category. Bucket size auto-scales (5 s, 30 s, 1 min, or 5 min) as history grows. <strong>Scroll horizontally</strong> to see older events; newest activity stays on the right.</p>
+                        <div id="timeline-scroll" class="timeline-scrollbar">
+                            <div id="timeline-inner">
                                 <canvas id="timeline-chart"></canvas>
                             </div>
                         </div>
                     </div>
                 </div>
+                <style>
+                    #timeline-scroll {
+                        overflow-x: auto;
+                        overflow-y: hidden;
+                        padding-bottom: 6px;
+                    }
+                    #timeline-inner {
+                        height: 240px;
+                        min-width: 100%;
+                        position: relative;
+                    }
+                    .timeline-scrollbar::-webkit-scrollbar { height: 12px; }
+                    .timeline-scrollbar::-webkit-scrollbar-track {
+                        background: var(--surface-2); border-radius: 6px;
+                    }
+                    .timeline-scrollbar::-webkit-scrollbar-thumb {
+                        background: var(--accent); border-radius: 6px; opacity: 0.6;
+                    }
+                    .timeline-scrollbar::-webkit-scrollbar-thumb:hover {
+                        background: var(--primary);
+                    }
+                    .timeline-scrollbar { scrollbar-color: var(--accent) var(--surface-2); }
+                </style>
                 <div class="card">
                     <div class="card-body">
                         <h5 class="mb-3">Event Distribution</h5>
@@ -169,7 +192,7 @@ const timeline = new Chart(timelineCtx, {
     },
 });
 
-const PX_PER_BAR = 14;
+const PX_PER_BAR = 26;
 
 async function refresh() {
     const status = document.getElementById('status');
@@ -216,10 +239,15 @@ async function refresh() {
         const scrollEl = document.getElementById('timeline-scroll');
         const innerEl = document.getElementById('timeline-inner');
         const wantedWidth = Math.max(scrollEl.clientWidth, tl.length * PX_PER_BAR);
-        innerEl.style.width = wantedWidth + 'px';
 
-        // Preserve auto-scroll-to-right unless the user has manually scrolled left
-        const atRight = scrollEl.scrollLeft + scrollEl.clientWidth >= scrollEl.scrollWidth - 4;
+        // Preserve auto-scroll-to-right unless user has scrolled away from the edge
+        const atRight = (scrollEl.scrollLeft + scrollEl.clientWidth) >= (scrollEl.scrollWidth - 8);
+
+        if (innerEl.style.width !== wantedWidth + 'px') {
+            innerEl.style.width = wantedWidth + 'px';
+            // Tell Chart.js to recompute its size after the parent width changed
+            timeline.resize();
+        }
 
         timeline.data.labels = labels;
         timeline.data.datasets[0].data = successData;
