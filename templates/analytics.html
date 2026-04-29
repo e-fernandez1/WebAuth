@@ -135,19 +135,31 @@ function animateNumber(el, target) {
 
 const timelineCtx = document.getElementById('timeline-chart').getContext('2d');
 const timeline = new Chart(timelineCtx, {
-    type: 'line',
+    type: 'bar',
     data: { labels: [], datasets: [
-        { label: 'Successes', data: [], borderColor: '#4ade80', backgroundColor: 'rgba(74,222,128,0.15)', fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2 },
-        { label: 'Failures', data: [], borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.15)', fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2 },
-        { label: 'Attacks', data: [], borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.18)', fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2 },
+        { label: 'Successes', data: [], backgroundColor: 'rgba(74,222,128,0.85)', borderColor: '#4ade80', borderWidth: 0, borderRadius: 2 },
+        { label: 'Failures',  data: [], backgroundColor: 'rgba(248,113,113,0.85)', borderColor: '#f87171', borderWidth: 0, borderRadius: 2 },
+        { label: 'Attacks',   data: [], backgroundColor: 'rgba(251,191,36,0.9)',  borderColor: '#fbbf24', borderWidth: 0, borderRadius: 2 },
     ]},
     options: {
-        animation: { duration: 400 },
+        animation: { duration: 250 },
         scales: {
-            x: { ticks: { color: '#8a93a6' }, grid: { color: 'rgba(255,255,255,0.04)' } },
-            y: { ticks: { color: '#8a93a6', precision: 0 }, grid: { color: 'rgba(255,255,255,0.04)' }, beginAtZero: true },
+            x: {
+                stacked: true,
+                ticks: { color: '#8a93a6', maxRotation: 0, autoSkipPadding: 16 },
+                grid: { display: false },
+            },
+            y: {
+                stacked: true,
+                ticks: { color: '#8a93a6', precision: 0 },
+                grid: { color: 'rgba(255,255,255,0.04)' },
+                beginAtZero: true,
+            },
         },
-        plugins: { legend: { labels: { color: '#e8ecf3' } } },
+        plugins: {
+            legend: { labels: { color: '#e8ecf3', usePointStyle: true, pointStyle: 'rectRounded' } },
+            tooltip: { mode: 'index', intersect: false },
+        },
     },
 });
 
