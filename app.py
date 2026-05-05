@@ -193,17 +193,22 @@ def load_user(user_id):
     return db.session.get(User, int(user_id))
 
 
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "efernandez2464@gmail.com").strip()
+
+
 def auto_seed_if_empty():
     """Create default test users if the database is empty.
 
     Runs on startup so a fresh deploy (e.g. Render's ephemeral filesystem)
     always boots with a working admin account and test users.
+    The admin's email is taken from ADMIN_EMAIL env var so 2FA codes go
+    to a real inbox; the other test users keep fake addresses for demo.
     """
     if User.query.count() > 0:
         return
     print("[AUTO-SEED] No users found, creating defaults...")
     seed_users = [
-        ("admin",     "admin@webauth.demo",   "AdminPassword123!",  True),
+        ("admin",     ADMIN_EMAIL,            "AdminPassword123!",  True),
         ("testuser",  "test@webauth.demo",    "TestPassword123!",   False),
         ("alice",     "alice@webauth.demo",   "AlicePassword123!",  False),
         ("bob",       "bob@webauth.demo",     "BobPassword123!",    False),
@@ -214,7 +219,18 @@ def auto_seed_if_empty():
         db.session.add(User(username=username, email=email,
                             password_hash=pw_hash, is_admin=is_admin))
     db.session.commit()
-    print(f"[AUTO-SEED] Created {len(seed_users)} test users (admin + 4 regular).")
+    print(f"[AUTO-SEED] Created {len(seed_users)} test users "
+          f"(admin={ADMIN_EMAIL} + 4 regular).")
+
+
+def update_admin_email_if_default():
+    """If admin still has the legacy demo email, replace it with ADMIN_EMAIL."""
+    admin = User.query.filter_by(username="admin").first()
+    if admin and admin.email.endswith("@webauth.demo") and ADMIN_EMAIL:
+        old = admin.email
+        admin.email = ADMIN_EMAIL
+        db.session.commit()
+        print(f"[MIGRATE] Updated admin email: {old} -> {ADMIN_EMAIL}")
 
 
 def ensure_columns():
@@ -257,6 +273,7 @@ with app.app_context():
     db.create_all()
     ensure_columns()
     auto_seed_if_empty()
+    update_admin_email_if_default()
 
 
 PASSWORD_RULES = {
