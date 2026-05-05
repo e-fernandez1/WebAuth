@@ -1,48 +1,163 @@
 {% extends "base.html" %}
-{% block title %}Dashboard &middot; WebAuth Demo{% endblock %}
+{% block title %}Dashboard &middot; WebAuth{% endblock %}
 
 {% block content %}
 <section class="py-5">
     <div class="container">
-        <h2 class="mb-3">Welcome back, {{ current_user.username }}</h2>
-        <p class="text-muted">You are authenticated. This page rejects any unauthenticated request.</p>
+        <h2 class="mb-1">Welcome back, {{ current_user.username }}</h2>
+        <p class="text-muted">Your Personal Security Center &mdash; everything authentication-related about your account, in one place.</p>
 
-        <div class="row mt-4">
-            <div class="col-lg-7">
-                <h5>Your Recent Auth Events</h5>
-                <ul class="list-group">
-                    {% for e in events %}
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span><span class="badge bg-secondary">{{ e.event_type }}</span> {{ e.detail or "" }}</span>
-                            <small class="text-muted">{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') }} UTC</small>
-                        </li>
-                    {% else %}
-                        <li class="list-group-item text-muted">No events yet.</li>
-                    {% endfor %}
-                </ul>
-            </div>
-            <div class="col-lg-5">
-                <div class="card border-0 bg-light">
-                    <div class="card-body">
-                        <h5>Account Security</h5>
-                        <p class="small mb-1"><strong>Password storage:</strong> bcrypt (cost 12)</p>
-                        <p class="small mb-1"><strong>2FA:</strong> Enabled (email codes, 5-min expiry)</p>
-                        <p class="small mb-1"><strong>Email:</strong> {{ current_user.email }}</p>
-                        <p class="small mb-1"><strong>Role:</strong>
-                            {% if current_user.is_admin %}
-                                <span class="badge bg-warning">admin</span>
-                            {% else %}
-                                <span class="badge bg-secondary">user</span>
-                            {% endif %}
-                        </p>
-                        <p class="small mb-1"><strong>Account created:</strong> {{ current_user.created_at.strftime('%Y-%m-%d') }}</p>
+        <!-- Security Center tiles -->
+        <div class="row g-3 mt-2">
+            <div class="col-md-3 col-6">
+                <div class="sc-card">
+                    <div class="sc-label">Account</div>
+                    <div class="sc-value" style="font-size: 1.1rem;">{{ current_user.username }}</div>
+                    <div class="sc-detail">{{ current_user.email }}</div>
+                    <div class="sc-detail mt-2">
                         {% if current_user.is_admin %}
-                            <a href="{{ url_for('admin_home') }}" class="btn btn-warning btn-sm mt-3">Open Admin Console</a>
+                            <span class="badge bg-primary">admin</span>
+                        {% else %}
+                            <span class="badge bg-secondary">user</span>
                         {% endif %}
-                        <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm mt-3">Log out</a>
                     </div>
                 </div>
             </div>
+            <div class="col-md-3 col-6">
+                <div class="sc-card">
+                    <div class="sc-label">Password Storage</div>
+                    <div class="sc-value">bcrypt</div>
+                    <div class="sc-detail">cost factor {{ sc.bcrypt_cost }} &middot; per-user salt</div>
+                    <div class="sc-detail">~250ms per verify</div>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="sc-card">
+                    <div class="sc-label">2FA Codes Active</div>
+                    <div class="sc-value">{{ sc.active_codes }}</div>
+                    <div class="sc-detail">unused, not yet expired</div>
+                    <div class="sc-detail">5-min lifetime &middot; single-use</div>
+                </div>
+            </div>
+            <div class="col-md-3 col-6">
+                <div class="sc-card">
+                    <div class="sc-label">Failed Attempts (24h)</div>
+                    <div class="sc-value {% if sc.failed_24h > 0 %}text-warning{% endif %}">{{ sc.failed_24h }}</div>
+                    <div class="sc-detail">login_fail + 2fa_fail + rate_limited</div>
+                    {% if sc.failed_24h == 0 %}
+                        <div class="sc-detail text-success">no suspicious activity</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Last successful login -->
+        {% if sc.last_login %}
+        <div class="card mt-4">
+            <div class="card-body">
+                <p class="text-muted small mb-2 text-uppercase fw-bold" style="letter-spacing: 0.12em;">Most Recent Successful Login</p>
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <strong>{{ sc.last_login.timestamp.strftime('%Y-%m-%d %H:%M') }} UTC</strong>
+                        <div class="text-muted small">{{ sc.last_login.timestamp.strftime('%A') }}</div>
+                    </div>
+                    <div class="col-md-3">
+                        <strong>{{ sc.last_login.ip or '&mdash;' }}</strong>
+                        <div class="text-muted small">
+                            {% if sc.last_login.country %}
+                                {{ sc.last_login.city }}{% if sc.last_login.city and sc.last_login.country %}, {% endif %}{{ sc.last_login.country }}
+                            {% else %}
+                                Local network
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <strong>{{ sc.last_login.browser or '&mdash;' }}</strong>
+                        <div class="text-muted small">{{ sc.last_login.os_family or '' }}</div>
+                    </div>
+                    <div class="col-md-3">
+                        <strong>{{ (sc.last_login.device or 'unknown')|capitalize }}</strong>
+                        <div class="text-muted small">device class</div>
+                    </div>
+                </div>
+                <p class="small text-muted mt-3 mb-0">If this wasn&rsquo;t you, change your password immediately.</p>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="row g-4 mt-2">
+            <!-- Login history -->
+            <div class="col-lg-6">
+                <h5 class="mb-3">Recent Logins</h5>
+                {% if sc.successful_logins %}
+                    <div class="list-group">
+                        {% for ev in sc.successful_logins %}
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between">
+                                    <span>
+                                        <span class="badge bg-success">login</span>
+                                        <code>{{ ev.ip or '&mdash;' }}</code>
+                                    </span>
+                                    <small class="text-muted">{{ ev.timestamp.strftime('%Y-%m-%d %H:%M') }}</small>
+                                </div>
+                                <div class="small text-muted mt-1">
+                                    {% if ev.country %}{{ ev.city }}{% if ev.city and ev.country %}, {% endif %}{{ ev.country }} &middot; {% endif %}
+                                    {{ ev.browser or '' }} {% if ev.browser and ev.os_family %}&middot; {% endif %}{{ ev.os_family or '' }}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-muted">No successful logins recorded yet.</p>
+                {% endif %}
+            </div>
+
+            <!-- Failed attempts -->
+            <div class="col-lg-6">
+                <h5 class="mb-3">Recent Failed Attempts</h5>
+                {% if sc.failed_attempts %}
+                    <div class="list-group">
+                        {% for ev in sc.failed_attempts %}
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between">
+                                    <span>
+                                        <span class="badge bg-danger">{{ ev.event_type }}</span>
+                                        <code>{{ ev.ip or '&mdash;' }}</code>
+                                    </span>
+                                    <small class="text-muted">{{ ev.timestamp.strftime('%Y-%m-%d %H:%M') }}</small>
+                                </div>
+                                <div class="small text-muted mt-1">
+                                    {{ ev.detail or '' }}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-muted">No failed attempts &mdash; clean record.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Recent activity -->
+        <div class="mt-5">
+            <h5 class="mb-3">All Recent Activity</h5>
+            <ul class="list-group">
+                {% for e in events %}
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span><span class="badge bg-secondary">{{ e.event_type }}</span> {{ e.detail or "" }}</span>
+                        <small class="text-muted">{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') }} UTC</small>
+                    </li>
+                {% else %}
+                    <li class="list-group-item text-muted">No events yet.</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div class="mt-4">
+            {% if current_user.is_admin %}
+                <a href="{{ url_for('admin_home') }}" class="btn btn-primary">Open Admin Console</a>
+            {% endif %}
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-primary">Log out</a>
         </div>
     </div>
 </section>

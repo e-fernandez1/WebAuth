@@ -112,11 +112,20 @@ def admin_required(f):
 load_dotenv()
 
 
-SMTP_HOST = os.environ.get("SMTP_HOST", "")
+SMTP_HOST = os.environ.get("SMTP_HOST", "").strip()
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "465"))
-SMTP_USER = os.environ.get("SMTP_USER", "")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-SMTP_FROM = os.environ.get("SMTP_FROM", SMTP_USER or "noreply@webauth.demo")
+SMTP_USER = os.environ.get("SMTP_USER", "").strip()
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "").strip()
+SMTP_FROM = os.environ.get("SMTP_FROM", SMTP_USER or "noreply@webauth.demo").strip()
+
+# One-line startup banner so you can immediately tell whether real email is wired up.
+if SMTP_HOST and SMTP_USER and SMTP_PASSWORD:
+    print(f"[SMTP] Configured: host={SMTP_HOST}:{SMTP_PORT} user={SMTP_USER} from={SMTP_FROM}")
+else:
+    missing = [n for n, v in [("SMTP_HOST", SMTP_HOST), ("SMTP_USER", SMTP_USER),
+                              ("SMTP_PASSWORD", SMTP_PASSWORD)] if not v]
+    print(f"[SMTP] DISABLED — missing env var(s): {', '.join(missing)}. "
+          f"Codes will print to this console instead of sending email.")
 
 
 LOGIN_ATTEMPTS = defaultdict(list)
@@ -596,7 +605,51 @@ def dashboard():
         .limit(10)
         .all()
     )
-    return render_template("dashboard.html", events=recent_events)
+
+    # --- Personal Security Center ---
+    successful_logins = (
+        AuthEvent.query
+        .filter(AuthEvent.username == current_user.username,
+                AuthEvent.event_type == "2fa_success")
+        .order_by(AuthEvent.timestamp.desc())
+        .limit(5)
+        .all()
+    )
+    failed_attempts = (
+        AuthEvent.query
+        .filter(AuthEvent.username == current_user.username,
+                AuthEvent.event_type.in_(["login_fail", "2fa_fail"]))
+        .order_by(AuthEvent.timestamp.desc())
+        .limit(5)
+        .all()
+    )
+    last_login = successful_logins[0] if successful_logins else None
+    active_codes = (
+        EmailCode.query
+        .filter(EmailCode.user_id == current_user.id,
+                EmailCode.used == False,
+                EmailCode.expires_at > datetime.utcnow())
+        .count()
+    )
+    failed_24h = (
+        AuthEvent.query
+        .filter(AuthEvent.username == current_user.username,
+                AuthEvent.event_type.in_(["login_fail", "2fa_fail", "rate_limited"]),
+                AuthEvent.timestamp > datetime.utcnow() - timedelta(hours=24))
+        .count()
+    )
+
+    security_center = {
+        "successful_logins": successful_logins,
+        "failed_attempts": failed_attempts,
+        "last_login": last_login,
+        "active_codes": active_codes,
+        "failed_24h": failed_24h,
+        "bcrypt_cost": 12,
+    }
+
+    return render_template("dashboard.html", events=recent_events,
+                           sc=security_center)
 
 
 @app.route("/logout")
@@ -616,6 +669,11 @@ def analytics():
 @app.route("/security")
 def security():
     return render_template("security.html")
+
+
+@app.route("/concepts")
+def concepts():
+    return render_template("concepts.html")
 
 
 @app.route("/explained")
@@ -718,66 +776,6 @@ def simulate_fake_emails():
         "attempted": len(fake),
         "rejected": rejected,
         "defense": "email-validator parses every address and rejects malformed inputs. Real signups also require confirming a code sent to the address.",
-        "log": log,
-    })
-
-
-@app.route("/api/simulate-sqli", methods=["POST"])
-def simulate_sqli():
-    payloads = [
-        "' OR '1'='1",
-        "admin' --",
-        "' UNION SELECT * FROM user --",
-        "1' OR '1'='1' --",
-        "'; DROP TABLE user; --",
-        "admin'); DROP TABLE user; --",
-        "\" OR \"\"=\"",
-        "' OR sleep(5) --",
-    ]
-    ctx = request_context()
-    log = []
-    for payload in payloads:
-        result = User.query.filter_by(username=payload).first()
-        outcome = "SAFE" if result is None else "MATCHED"
-        detail = (f"SQL: SELECT * FROM user WHERE username = ?  "
-                  f"[bound: '{payload[:40]}']  → 0 rows")
-        log.append({"input": payload, "outcome": outcome, "detail": detail})
-        _add_sim_event(ctx, "simulated_attack", payload,
-                       "treated_as_literal_string_no_match" if result is None else "matched",
-                       "sql_injection_attempt")
-    db.session.commit()
-    return jsonify({
-        "attempted": len(payloads),
-        "successful": 0,
-        "defense": "SQLAlchemy ORM parameterizes every query. Payloads are passed as bound values, never as SQL syntax. The user table is intact — no DROP, no AUTH bypass.",
-        "log": log,
-    })
-
-
-@app.route("/api/simulate-xss", methods=["POST"])
-def simulate_xss():
-    from markupsafe import escape
-    payloads = [
-        "<script>alert(1)</script>",
-        "<img src=x onerror=alert(1)>",
-        "javascript:alert(1)",
-        "<svg onload=alert(1)>",
-        "'\"><script>alert(document.cookie)</script>",
-        "<iframe src=javascript:alert(1)>",
-    ]
-    ctx = request_context()
-    log = []
-    for p in payloads:
-        escaped = str(escape(p))
-        log.append({"input": p, "outcome": "ESCAPED",
-                    "detail": f"renders as: {escaped}"})
-        _add_sim_event(ctx, "simulated_attack", p,
-                       "would_render_as_inert_text", "xss_attempt")
-    db.session.commit()
-    return jsonify({
-        "attempted": len(payloads),
-        "executed": 0,
-        "defense": "Jinja2 (server) and a JS escapeHtml helper (client) both convert < > \" ' & into HTML entities. Payloads render as harmless visible text.",
         "log": log,
     })
 
@@ -994,10 +992,27 @@ def admin_clear_events():
     return redirect(url_for("admin_home"))
 
 
+RANGE_PRESETS = {
+    "1h":  timedelta(hours=1),
+    "6h":  timedelta(hours=6),
+    "24h": timedelta(hours=24),
+    "7d":  timedelta(days=7),
+    "30d": timedelta(days=30),
+}
+
+
 @app.route("/api/stats")
 def api_stats():
     cutoff_24h = datetime.utcnow() - timedelta(hours=24)
     cutoff_window = datetime.utcnow() - timedelta(seconds=60)
+
+    # Custom timeline range. "all" (or unrecognized) falls back to server boot.
+    range_key = request.args.get("range", "all")
+    if range_key in RANGE_PRESETS:
+        range_start = datetime.utcnow() - RANGE_PRESETS[range_key]
+    else:
+        range_start = SERVER_START_TIME
+        range_key = "all"
 
     # Total count of every event type
     rows = (
@@ -1031,9 +1046,9 @@ def api_stats():
     last_hour = AuthEvent.query.filter(AuthEvent.timestamp >= cutoff_24h).count()
     user_count = User.query.count()
 
-    # Time-bucketed timeline. Spans from server boot (= when the analytics first went live)
-    # to now. Auto-scales bucket size as uptime grows.
-    timeline_start = SERVER_START_TIME
+    # Time-bucketed timeline. Range is selected by the client via ?range= ; default
+    # is server boot ("all"). Auto-scales bucket size as window grows.
+    timeline_start = max(range_start, SERVER_START_TIME)
 
     duration_minutes = max(1, (datetime.utcnow() - timeline_start).total_seconds() / 60)
     if duration_minutes < 30:
@@ -1075,6 +1090,8 @@ def api_stats():
         "total_users": user_count,
         "timeline": timeline,
         "bucket_seconds": bucket_seconds,
+        "range": range_key,
+        "range_start": timeline_start.isoformat() + "Z",
     })
 
 

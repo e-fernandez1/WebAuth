@@ -48,8 +48,9 @@
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-dark">Create Account</button>
+                    <button type="submit" class="btn btn-primary" disabled>Create Account</button>
                     <a href="{{ url_for('login') }}" class="btn btn-link">Already have an account?</a>
+                    <p class="small text-muted mt-2 mb-0" id="submit-hint">Button activates when every password rule passes.</p>
                 </form>
             </div>
             <div class="col-lg-6 d-none d-lg-block">

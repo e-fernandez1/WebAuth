@@ -196,6 +196,22 @@ section.bg-light {
     box-shadow: 0 4px 12px var(--accent-glow);
 }
 
+.range-picker .btn.active,
+.range-picker .btn-outline-primary.active {
+    background: var(--accent);
+    color: #ffffff;
+    border-color: var(--accent);
+}
+
+.btn:disabled, .btn.disabled {
+    background: var(--surface-3) !important;
+    color: var(--text-muted) !important;
+    border-color: var(--border) !important;
+    box-shadow: none !important;
+    cursor: not-allowed;
+    transform: none !important;
+}
+
 .btn-outline-light, .btn-outline-dark, .btn-outline-primary {
     border: 1px solid var(--border-strong);
     color: var(--accent);
@@ -469,4 +485,261 @@ section {
 .status-offline {
     background: var(--danger) !important;
     color: #ffffff !important;
+}
+
+/* Authentication Flow Stepper */
+.auth-flow-stepper .flow-step {
+    margin-bottom: 0.85rem;
+}
+
+.auth-flow-stepper details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 12px;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+    overflow: hidden;
+}
+
+.auth-flow-stepper details[open] {
+    border-color: var(--accent);
+    box-shadow: 0 8px 24px rgba(20, 83, 45, 0.08);
+}
+
+.auth-flow-stepper summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 1rem 1.4rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    user-select: none;
+}
+
+.auth-flow-stepper summary::-webkit-details-marker {
+    display: none;
+}
+
+.auth-flow-stepper summary::after {
+    content: '+';
+    margin-left: auto;
+    font-size: 1.4rem;
+    color: var(--accent);
+    font-weight: 600;
+    transition: transform 0.2s ease;
+}
+
+.auth-flow-stepper details[open] summary::after {
+    content: '\2212';
+}
+
+.auth-flow-stepper .step-num {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.auth-flow-stepper .step-label strong {
+    display: block;
+    color: var(--text);
+    font-size: 1.05rem;
+}
+
+.auth-flow-stepper .step-label small {
+    display: block;
+    line-height: 1.4;
+}
+
+.auth-flow-stepper .step-detail {
+    padding: 0 1.4rem 1.2rem 4rem;
+    border-top: 1px solid var(--border);
+    padding-top: 1rem;
+}
+
+.auth-flow-stepper .step-detail p:last-child {
+    margin-bottom: 0;
+}
+
+.auth-flow-stepper .step-detail code {
+    background: var(--surface-2);
+    color: var(--accent);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+
+/* Pipeline Diagram */
+.pipeline-diagram {
+    padding: 2rem 0;
+}
+
+.pipeline-row {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    gap: 0;
+    flex-wrap: wrap;
+}
+
+.pipeline-node {
+    flex: 1;
+    min-width: 160px;
+    max-width: 200px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem 1rem;
+    text-align: center;
+    transition: transform 0.18s ease, border-color 0.18s ease;
+}
+
+.pipeline-node.start {
+    border-color: var(--info);
+}
+
+.pipeline-node.end {
+    border-color: var(--success);
+    background: linear-gradient(180deg, var(--surface) 0%, rgba(21, 128, 61, 0.05) 100%);
+}
+
+.pipeline-node:hover {
+    transform: translateY(-3px);
+    border-color: var(--accent);
+}
+
+.pipeline-icon {
+    font-size: 1.8rem;
+    margin-bottom: 0.5rem;
+}
+
+.pipeline-title {
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.25rem;
+    font-size: 0.95rem;
+}
+
+.pipeline-tech {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.pipeline-arrow {
+    flex: 0 0 24px;
+    align-self: center;
+    height: 2px;
+    background: var(--border-strong);
+    position: relative;
+    margin: 0 4px;
+}
+
+.pipeline-arrow::after {
+    content: '';
+    position: absolute;
+    right: -1px;
+    top: -4px;
+    width: 0;
+    height: 0;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-left: 8px solid var(--border-strong);
+}
+
+@media (max-width: 992px) {
+    .pipeline-row {
+        flex-direction: column;
+        align-items: center;
+    }
+    .pipeline-node {
+        max-width: 100%;
+        width: 100%;
+    }
+    .pipeline-arrow {
+        width: 2px;
+        height: 24px;
+        flex: 0 0 24px;
+        margin: 4px 0;
+    }
+    .pipeline-arrow::after {
+        right: -4px;
+        top: auto;
+        bottom: -1px;
+        border-left: 5px solid transparent;
+        border-right: 5px solid transparent;
+        border-top: 8px solid var(--border-strong);
+    }
+}
+
+.pipeline-rejects {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px dashed var(--border);
+    text-align: center;
+}
+
+.reject-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+}
+
+.reject-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+}
+
+.reject-item {
+    background: rgba(185, 28, 28, 0.08);
+    border: 1px solid rgba(185, 28, 28, 0.2);
+    color: var(--danger);
+    padding: 0.4rem 0.85rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Security Center cards on dashboard */
+.sc-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    height: 100%;
+}
+
+.sc-card .sc-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.sc-card .sc-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    line-height: 1.1;
+}
+
+.sc-card .sc-detail {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 0.4rem;
 }

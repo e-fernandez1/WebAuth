@@ -53,8 +53,18 @@
             <div class="col-lg-7">
                 <div class="card mb-4">
                     <div class="card-body">
-                        <h5 class="mb-1">Events Timeline</h5>
-                        <p class="small text-muted mb-3">Every event since the server started, stacked by category. Bucket size auto-scales (5 s, 30 s, 1 min, or 5 min) as history grows. <strong>Scroll horizontally</strong> to see older events; newest activity stays on the right.</p>
+                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+                            <h5 class="mb-0">Events Timeline</h5>
+                            <div class="btn-group btn-group-sm range-picker" role="group" aria-label="Time range">
+                                <button type="button" class="btn btn-outline-primary range-btn" data-range="1h">1h</button>
+                                <button type="button" class="btn btn-outline-primary range-btn" data-range="6h">6h</button>
+                                <button type="button" class="btn btn-outline-primary range-btn" data-range="24h">24h</button>
+                                <button type="button" class="btn btn-outline-primary range-btn" data-range="7d">7d</button>
+                                <button type="button" class="btn btn-outline-primary range-btn" data-range="30d">30d</button>
+                                <button type="button" class="btn btn-outline-primary range-btn active" data-range="all">All</button>
+                            </div>
+                        </div>
+                        <p class="small text-muted mb-3">Stacked by category. Bucket size auto-scales as the window grows. <strong>Scroll horizontally</strong> to see older events; newest activity stays on the right.</p>
 
                         <!-- Static legend (doesn't scroll) -->
                         <div class="d-flex gap-4 mb-3 small justify-content-center" style="color: var(--text);">
@@ -262,10 +272,22 @@ const yaxisChart = new Chart(yaxisCtx, {
 const PX_PER_BAR = 26;
 let followLatest = true;
 
+let currentRange = 'all';
+
+document.querySelectorAll('.range-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentRange = btn.dataset.range;
+        followLatest = true;
+        refresh();
+    });
+});
+
 async function refresh() {
     const status = document.getElementById('status');
     try {
-        const res = await fetch('/api/stats');
+        const res = await fetch('/api/stats?range=' + encodeURIComponent(currentRange));
         if (!res.ok) throw 0;
         const data = await res.json();
         status.className = 'badge status-live';

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Concepts &middot; WebAuth{% endblock %}
+
+{% block content %}
+<section class="py-5">
+    <div class="container" style="max-width: 920px;">
+        <h2 class="mb-2">Authentication Concepts</h2>
+        <p class="text-muted mb-5">Plain-English explainers of every idea this site is built on. Each section pairs the concept with how WebAuth actually applies it.</p>
+
+        <!-- Hashing -->
+        <div class="mb-5">
+            <h4>1. Password Hashing</h4>
+            <p>A hash function turns any input into a fixed-length string of garbage. The trick that makes hashing useful for passwords is that it&rsquo;s <strong>one-way</strong>: easy to compute the hash from the password, infeasible to reverse the hash back into the password.</p>
+            <p>When you sign up, the server computes <code>hash(password)</code> and stores only the hash. When you log in, it computes <code>hash(submitted_password)</code> and compares it to the stored hash. If they match, the password was right &mdash; without the server ever needing the plaintext.</p>
+            <p class="text-muted">Why it matters: if an attacker steals the database, they get hashes, not passwords. With a slow hash function, brute-forcing each user&rsquo;s password individually takes years.</p>
+            <div class="card my-3"><div class="card-body">
+                <p class="text-muted small mb-2 text-uppercase fw-bold" style="letter-spacing: 0.12em;">In WebAuth</p>
+                <p class="mb-0">Passwords are hashed with bcrypt at cost 12 before any database write. Plaintext is never stored. The verification function performs a constant-time comparison so an attacker can&rsquo;t use timing differences to leak the answer.</p>
+            </div></div>
+        </div>
+
+        <!-- Salt -->
+        <div class="mb-5">
+            <h4>2. Salt</h4>
+            <p>A salt is a random value added to each password before hashing. Two users with the same password get different salts and therefore different hashes.</p>
+            <p>Without a salt, an attacker can precompute a giant lookup table mapping common passwords to their hashes (a &ldquo;rainbow table&rdquo;) and crack every user with the same password in one shot. Salt destroys this shortcut: the attacker has to brute-force every user separately.</p>
+            <div class="card my-3"><div class="card-body">
+                <p class="text-muted small mb-2 text-uppercase fw-bold" style="letter-spacing: 0.12em;">In WebAuth</p>
+                <p class="mb-0">bcrypt generates a 16-byte random salt for every user. The salt is embedded in the stored hash itself, so it travels with the password and never has to be tracked separately.</p>
+            </div></div>
+        </div>
+
+        <!-- bcrypt -->
+        <div class="mb-5">
+            <h4>3. bcrypt and the Cost Factor</h4>
+            <p>bcrypt is a hash function specifically designed to be <strong>slow</strong>, on purpose. The cost factor controls how slow: each cost increment doubles the work. Cost 12 means roughly 250 ms per hash on commodity hardware.</p>
+            <p>250ms is fine when you log in once. It&rsquo;s a disaster for an attacker trying a billion passwords offline &mdash; that&rsquo;s 8,000 years of pure compute per user. The same hash function that took milliseconds for the legitimate user makes the attack mathematically uneconomic.</p>
+            <div class="card my-3"><div class="card-body">
+                <p class="text-muted small mb-2 text-uppercase fw-bold" style="letter-spacing: 0.12em;">In WebAuth</p>
+                <p class="mb-0">Cost 12 was picked as the standard production setting in 2026. As hardware gets faster, cost factors are raised in lockstep so the wall-clock cost of an attack stays high.</p>
+            </div></div>
+        </div>
+
+        <!-- 2FA -->
+        <div class="mb-5">
+            <h4>4. Two-Factor Authentication</h4>
+            <p>A factor is something the user has, knows, or is. Passwords are &ldquo;something you know.&rdquo; A second factor is something separate &mdash; a phone, a security key, an email inbox, a fingerprint. The point: even if your password is stolen, the attacker still needs your second factor.</p>
+            <p>Common second factors: SMS codes (weak, SIM swappable), authenticator app TOTPs (good), email codes (frictionless, depends on email security), hardware keys / WebAuthn (strongest).</p>
+            <div class="card my-3"><div class="card-body">
+                <p class="text-muted small mb-2 text-uppercase fw-bold" style="letter-spacing: 0.12em;">In WebAuth</p>
+                <p class="mb-0">After a correct password, a 6-digit code is emailed to the registered address. The code is generated with <code>secrets.randbelow</code> (cryptographically secure, not predictable), single-use, and expires in 5 minutes. Issuing a new code invalidates the previous one, so a stolen code from a prior session is worthless.</p>
+            </div></div>
+        </div>
+
+        <!-- Sessions -->
+        <div class="mb-5">
+            <h4>5. Sessions and Cookies</h4>
+            <p>HTTP is stateless &mdash; the server doesn&rsquo;t remember you between requests. To stay logged in, your browser sends a session cookie with every request. The server checks the cookie to confirm who you are.</p>
+            <p>The cookie has to be unforgeable, so the server <em>signs</em> it with a secret key. If anyone tampers with the cookie, the signature breaks and the server rejects it.</p>
+            <p>Three cookie flags do most of the heavy lifting:</p>
+            <ul>
+                <li><strong>HttpOnly</strong> &mdash; JavaScript can&rsquo;t read the cookie, so even an XSS bug can&rsquo;t exfiltrate the session token.</li>
+                <li><strong>SameSite=Lax</strong> &mdash; the browser refuses to send the cookie on cross-site POSTs, defeating most CSRF attacks.</li>
+                <li><strong>Secure</strong> &mdash; the cookie is only sent over HTTPS, so it can&rsquo;t leak over plain HTTP.</li>
+            </ul>
+            <div class="card my-3"><div class="card-body">
+                <p class="text-muted small mb-2 text-uppercase fw-bold" style="letter-spacing: 0.12em;">In WebAuth</p>
+                <p class="mb-0">Flask-Login signs the session cookie with the server&rsquo;s SECRET_KEY. All three flags are set; Secure activates automatically in production. Sessions expire after 12 hours, capping how long a stolen cookie remains useful.</p>
+            </div></div>
+        </div>
+
+        <!-- HTTPS -->
+        <div class="mb-5">
+            <h4>6. HTTPS / TLS</h4>
+            <p>Every byte that leaves your browser passes through routers, ISPs, and possibly someone&rsquo;s coffee-shop Wi-Fi access point. HTTPS wraps the connection in a TLS tunnel: the contents are encrypted end-to-end, so nobody between you and the server can read them.</p>
+            <p>HSTS (HTTP Strict Transport Security) is a header that tells the browser &ldquo;always use HTTPS for this site, never plain HTTP.&rdquo; Once received, the browser remembers it for the duration specified, defeating downgrade attacks.</p>
+            <div class="card my-3"><div class="card-body">
+                <p class="text-muted small mb-2 text-uppercase fw-bold" style="letter-spacing: 0.12em;">In WebAuth</p>
+                <p class="mb-0">In production, the site is served by Render with a Let&rsquo;s Encrypt certificate over TLS 1.3. The HSTS header is set with <code>max-age=31536000</code> (one year) plus <code>includeSubDomains</code>.</p>
+            </div></div>
+        </div>
+
+        <!-- Rate limiting -->
+        <div class="mb-5">
+            <h4>7. Rate Limiting</h4>
+            <p>If an attacker can submit a million login attempts per second, even slow bcrypt won&rsquo;t save you. Rate limiting caps how many attempts any one source can make in a given window. The simplest version: count attempts per IP, return HTTP 429 (Too Many Requests) past a threshold.</p>
+            <p>Rate limiting buys time. Combined with hashing, it shrinks the attacker&rsquo;s attack rate from millions of guesses per second to handfuls per minute.</p>
+            <div class="card my-3"><div class="card-body">
+                <p class="text-muted small mb-2 text-uppercase fw-bold" style="letter-spacing: 0.12em;">In WebAuth</p>
+                <p class="mb-0">A sliding-window counter caps every IP at 5 attempts per minute on login, 5 on signup confirmation, and 5 on 2FA verification &mdash; three independent buckets, so exhausting one doesn&rsquo;t affect the others. Triggering the limit returns HTTP 429 and writes a <code>rate_limited</code> audit row.</p>
+            </div></div>
+        </div>
+
+        <!-- Audit -->
+        <div class="mb-5">
+            <h4>8. Audit Logging</h4>
+            <p>If you can&rsquo;t see authentication events, you can&rsquo;t notice when something goes wrong. An audit log records every signup, login, 2FA attempt, logout, and admin action with enough context (user, IP, time, browser) to reconstruct what happened.</p>
+            <p>For users: the audit log surfaces &ldquo;who logged in as you, from where, when&rdquo; so they can spot a takeover. For operators: it shows attack patterns &mdash; brute force, credential stuffing, geographic anomalies.</p>
+            <div class="card my-3"><div class="card-body">
+                <p class="text-muted small mb-2 text-uppercase fw-bold" style="letter-spacing: 0.12em;">In WebAuth</p>
+                <p class="mb-0">Every authentication event becomes an <code>AuthEvent</code> row with username, IP, browser/OS/device, country/city, event type, and a free-text detail field. The user dashboard shows your own history; the analytics dashboard shows aggregates; the admin console shows everything.</p>
+            </div></div>
+        </div>
+
+        <p class="text-muted small">Ready to see this in practice? <a href="{{ url_for('signup') }}">Sign up</a> and walk the flow, or read the full <a href="{{ url_for('explained') }}">code walkthrough</a>.</p>
+
+    </div>
+</section>
+{% endblock %}

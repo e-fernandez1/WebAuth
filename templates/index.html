@@ -6,17 +6,16 @@
         <div class="row align-items-center g-5">
             <div class="col-lg-7">
                 <p class="text-uppercase small fw-bold mb-3" style="color: var(--accent); letter-spacing: 0.2em;">
-                    <span class="live-dot"></span>Web Security Demonstration
+                    <span class="live-dot"></span>Web Authentication Demonstration
                 </p>
-                <h1 class="display-3 fw-bold mb-3">Secure Authentication, Live.</h1>
+                <h1 class="display-3 fw-bold mb-3">Modern Authentication, End&#8209;to&#8209;End.</h1>
                 <p class="lead mb-4">
-                    A working demonstration of modern web authentication: real-time
-                    password-rule validation, salted bcrypt hashing, RFC 6238 two-factor
-                    authentication, and a live analytics dashboard streaming every event
-                    on this site.
+                    A complete, working demonstration of how a real account system protects its users:
+                    live password validation, salted bcrypt hashing, email-confirmed signup, two-factor
+                    authentication, and signed sessions &mdash; all with a personal security center after login.
                 </p>
-                <a href="{{ url_for('signup') }}" class="btn btn-warning btn-lg me-2">Create an Account</a>
-                <a href="{{ url_for('analytics') }}" class="btn btn-outline-light btn-lg">View Live Analytics</a>
+                <a href="{{ url_for('signup') }}" class="btn btn-primary btn-lg me-2">Create an Account</a>
+                <a href="#flow" class="btn btn-outline-primary btn-lg">See the Auth Flow</a>
             </div>
 
             <div class="col-lg-5">
@@ -33,7 +32,7 @@
                     </div>
                     <div class="totp-code" id="totp-code">------</div>
                     <p class="small mb-0" style="color: var(--text-muted);">
-                        A visual of a one-time password rotating in real time. This site uses the same idea &mdash; delivered as a 6-digit code by email at login &mdash; so anyone with an inbox can use 2FA without installing an app.
+                        Visualizes a one-time password rotating in real time. This site uses the same idea &mdash; delivered as a 6-digit code by email at login &mdash; so anyone with an inbox can use 2FA without installing an app.
                     </p>
                 </div>
             </div>
@@ -41,108 +40,185 @@
     </div>
 </section>
 
-<section id="how" class="py-5">
+<!-- Authentication Flow Walkthrough -->
+<section id="flow" class="py-5">
     <div class="container">
-        <h2 class="mb-2">What This Site Demonstrates</h2>
-        <p class="text-muted mb-5">Each defense below is implemented in this application and exercised when you sign up and log in.</p>
-        <div class="row g-4">
+        <h2 class="mb-2">The Authentication Flow</h2>
+        <p class="text-muted mb-5">Click any step to expand the technical detail. Every step you see is what actually executes when you create an account or log in on this site.</p>
 
-            <div class="col-md-6 col-lg-3">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <p class="text-uppercase small fw-bold mb-2" style="color: var(--accent);">Defense 1</p>
-                        <h5 class="card-title">Password Rules</h5>
-                        <p class="card-text small">
-                            Live client-side validation enforces length, character classes, and rejects common passwords. Same rules re-checked server-side.
-                        </p>
-                    </div>
-                </div>
-            </div>
+        <div class="auth-flow-stepper">
+            <ol class="list-unstyled mb-0">
+                <li class="flow-step">
+                    <details>
+                        <summary>
+                            <span class="step-num">1</span>
+                            <span class="step-label">
+                                <strong>Sign Up</strong>
+                                <small class="text-muted">User submits username, email, password</small>
+                            </span>
+                        </summary>
+                        <div class="step-detail">
+                            <p>The server normalizes the email through <code>email-validator</code>, rejects duplicates, and runs the password through the same <code>validate_password()</code> function that backs the live indicator on the form.</p>
+                            <p class="small text-muted mb-0">Failed: weak password, duplicate user, or malformed email &rarr; logged as <code>signup_fail</code> in the audit log.</p>
+                        </div>
+                    </details>
+                </li>
 
-            <div class="col-md-6 col-lg-3">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <p class="text-uppercase small fw-bold mb-2" style="color: var(--accent);">Defense 2</p>
-                        <h5 class="card-title">bcrypt Hashing</h5>
-                        <p class="card-text small">
-                            Passwords salted and hashed with bcrypt at cost 12 before reaching storage. A breach exposes hashes, not credentials.
-                        </p>
-                    </div>
-                </div>
-            </div>
+                <li class="flow-step">
+                    <details>
+                        <summary>
+                            <span class="step-num">2</span>
+                            <span class="step-label">
+                                <strong>Email Confirmation</strong>
+                                <small class="text-muted">A 6-digit code is sent to the address; only confirmation creates the account</small>
+                            </span>
+                        </summary>
+                        <div class="step-detail">
+                            <p>The bcrypt hash and unverified data are stored in <code>PendingSignup</code>. No <code>User</code> row is created until the code matches. Codes expire after 10 minutes; any prior pending signups for the same email are dropped.</p>
+                            <p class="small text-muted mb-0">Without this gate, an attacker could squat on someone else&rsquo;s username paired with their own email.</p>
+                        </div>
+                    </details>
+                </li>
 
-            <div class="col-md-6 col-lg-3">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <p class="text-uppercase small fw-bold mb-2" style="color: var(--accent);">Defense 3</p>
-                        <h5 class="card-title">Email 2FA</h5>
-                        <p class="card-text small">
-                            Cryptographically random 6-digit codes emailed at login. Single-use, 5-minute expiration. Anyone with an inbox can use it &mdash; no authenticator app required.
-                        </p>
-                    </div>
-                </div>
-            </div>
+                <li class="flow-step">
+                    <details>
+                        <summary>
+                            <span class="step-num">3</span>
+                            <span class="step-label">
+                                <strong>Password Hashing</strong>
+                                <small class="text-muted">bcrypt with per-user salt, cost factor 12</small>
+                            </span>
+                        </summary>
+                        <div class="step-detail">
+                            <p>The plaintext password is fed to <code>bcrypt.hashpw(password, bcrypt.gensalt(rounds=12))</code>. The output is a 60-byte string that includes the algorithm version, cost, salt, and hash. The plaintext is never written to disk and never compared as plaintext.</p>
+                            <p class="small text-muted mb-0">Cost 12 means each verification takes ~250ms &mdash; barely noticeable for one user, prohibitively slow for an offline brute-force attacker.</p>
+                        </div>
+                    </details>
+                </li>
 
-            <div class="col-md-6 col-lg-3">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <p class="text-uppercase small fw-bold mb-2" style="color: var(--accent);">Defense 4</p>
-                        <h5 class="card-title">Session Protection</h5>
-                        <p class="card-text small">
-                            Authenticated routes are gated by signed session cookies. Logout actively invalidates the session.
-                        </p>
-                    </div>
-                </div>
-            </div>
+                <li class="flow-step">
+                    <details>
+                        <summary>
+                            <span class="step-num">4</span>
+                            <span class="step-label">
+                                <strong>Login: Password Check</strong>
+                                <small class="text-muted">bcrypt verifies in constant time</small>
+                            </span>
+                        </summary>
+                        <div class="step-detail">
+                            <p>The IP is rate-limited first (5 attempts/min). If allowed, <code>bcrypt.checkpw(submitted, stored_hash)</code> rehashes the candidate with the stored salt and compares in constant time, defeating timing oracles. The same generic &ldquo;Invalid credentials&rdquo; message is returned whether the username doesn&rsquo;t exist or the password was wrong &mdash; no enumeration leak.</p>
+                            <p class="small text-muted mb-0">No session is granted yet. Even a correct password isn&rsquo;t enough.</p>
+                        </div>
+                    </details>
+                </li>
 
+                <li class="flow-step">
+                    <details>
+                        <summary>
+                            <span class="step-num">5</span>
+                            <span class="step-label">
+                                <strong>Two-Factor: Email Code</strong>
+                                <small class="text-muted">6-digit one-time code, single-use, 5-min expiry</small>
+                            </span>
+                        </summary>
+                        <div class="step-detail">
+                            <p>A code generated with <code>secrets.randbelow(1_000_000)</code> is emailed to the user. Any prior unused code for that user is invalidated, so a stolen code from a previous session is worthless. The verify endpoint is independently rate-limited.</p>
+                            <p class="small text-muted mb-0">The 1-in-a-million guess rate combined with rate limiting caps an attacker at roughly 25 attempts per code window.</p>
+                        </div>
+                    </details>
+                </li>
+
+                <li class="flow-step">
+                    <details>
+                        <summary>
+                            <span class="step-num">6</span>
+                            <span class="step-label">
+                                <strong>Session Issuance</strong>
+                                <small class="text-muted">Signed cookie, HttpOnly + SameSite + Secure</small>
+                            </span>
+                        </summary>
+                        <div class="step-detail">
+                            <p>Only after the 2FA code matches is <code>login_user()</code> called and the Flask session promoted to logged-in. The cookie is signed (tampering invalidates the signature), <code>HttpOnly</code> (JavaScript can&rsquo;t read it), <code>SameSite=Lax</code> (defeats most CSRF), and <code>Secure</code> in production (HTTPS only).</p>
+                            <p class="small text-muted mb-0">Logout invalidates the session immediately; the 12-hour lifetime caps how long a stolen cookie remains useful.</p>
+                        </div>
+                    </details>
+                </li>
+
+                <li class="flow-step">
+                    <details>
+                        <summary>
+                            <span class="step-num">7</span>
+                            <span class="step-label">
+                                <strong>Audit &amp; Security Center</strong>
+                                <small class="text-muted">Every event logged; users see their own history</small>
+                            </span>
+                        </summary>
+                        <div class="step-detail">
+                            <p>Every signup, login, 2FA verification, logout, rate-limit, and admin action writes a row to <code>AuthEvent</code> with the user, IP, browser/OS/device, and geolocation. The Personal Security Center on the dashboard surfaces this back to the user so they can spot a login they didn&rsquo;t make.</p>
+                            <p class="small text-muted mb-0">Authentication that you can&rsquo;t see isn&rsquo;t authentication you can trust.</p>
+                        </div>
+                    </details>
+                </li>
+            </ol>
         </div>
     </div>
 </section>
 
-<section id="threats" class="py-5">
+<!-- Authentication Pipeline Diagram -->
+<section id="pipeline" class="py-5 bg-light">
     <div class="container">
-        <h2 class="mb-4">Threats Addressed</h2>
-        <div class="row g-4">
-            <div class="col-md-4">
-                <h5>Credential Stuffing</h5>
-                <p class="small text-muted mb-0">
-                    Reused-password attacks fail because 2FA blocks login even when the password is correct.
-                </p>
+        <h2 class="mb-2">Authentication Pipeline</h2>
+        <p class="text-muted mb-4">Every login request flows through these checks. Each node is implemented in this codebase with the library labeled below.</p>
+
+        <div class="pipeline-diagram" aria-label="Authentication pipeline diagram">
+            <div class="pipeline-row">
+                <div class="pipeline-node start">
+                    <div class="pipeline-icon">&#x1F310;</div>
+                    <div class="pipeline-title">Browser Request</div>
+                    <div class="pipeline-tech">HTTPS / TLS 1.3</div>
+                </div>
+                <div class="pipeline-arrow"></div>
+                <div class="pipeline-node">
+                    <div class="pipeline-icon">&#x1F6A6;</div>
+                    <div class="pipeline-title">Rate Limit</div>
+                    <div class="pipeline-tech">5/min per IP</div>
+                </div>
+                <div class="pipeline-arrow"></div>
+                <div class="pipeline-node">
+                    <div class="pipeline-icon">&#x1F510;</div>
+                    <div class="pipeline-title">Password Verify</div>
+                    <div class="pipeline-tech">bcrypt cost 12</div>
+                </div>
+                <div class="pipeline-arrow"></div>
+                <div class="pipeline-node">
+                    <div class="pipeline-icon">&#x1F4E7;</div>
+                    <div class="pipeline-title">2FA Code</div>
+                    <div class="pipeline-tech">single-use, 5 min</div>
+                </div>
+                <div class="pipeline-arrow"></div>
+                <div class="pipeline-node end">
+                    <div class="pipeline-icon">&#x1F36A;</div>
+                    <div class="pipeline-title">Signed Session</div>
+                    <div class="pipeline-tech">HttpOnly &middot; SameSite</div>
+                </div>
             </div>
-            <div class="col-md-4">
-                <h5>Database Breach</h5>
-                <p class="small text-muted mb-0">
-                    Stored hashes (not passwords) limit damage. bcrypt's cost factor slows offline brute force to days per password.
-                </p>
-            </div>
-            <div class="col-md-4">
-                <h5>Weak Passwords</h5>
-                <p class="small text-muted mb-0">
-                    Live validation enforces strength at account creation, before a weak credential ever enters the system.
-                </p>
-            </div>
-            <div class="col-md-4">
-                <h5>Phishing &amp; Replay</h5>
-                <p class="small text-muted mb-0">
-                    Email codes are single-use and expire in 5 minutes, so an intercepted code is useless after one verification or one window.
-                </p>
-            </div>
-            <div class="col-md-4">
-                <h5>Session Hijacking</h5>
-                <p class="small text-muted mb-0">
-                    Cryptographically signed session cookies prevent tampering. Logout actively invalidates the session.
-                </p>
-            </div>
-            <div class="col-md-4">
-                <h5>Client-Side Bypass</h5>
-                <p class="small text-muted mb-0">
-                    All checks revalidate server-side. Disabling JavaScript does not weaken security.
-                </p>
+
+            <div class="pipeline-rejects">
+                <div class="reject-label">Rejections</div>
+                <div class="reject-row">
+                    <div class="reject-item">429 Too Many Requests</div>
+                    <div class="reject-item">Invalid credentials (generic)</div>
+                    <div class="reject-item">Code expired or wrong</div>
+                    <div class="reject-item">No session issued</div>
+                </div>
             </div>
         </div>
+
+        <p class="small text-muted mt-4 mb-0">Every transition writes an <code>AuthEvent</code> row &mdash; success and failure both visible in <a href="{{ url_for('analytics') }}">Live Analytics</a>.</p>
     </div>
 </section>
 
+<!-- Stack -->
 <section id="stack" class="py-5">
     <div class="container">
         <h2 class="mb-4">Technical Stack</h2>
@@ -153,19 +229,20 @@
                 <p class="mb-1"><strong>Password Hashing</strong></p>
                 <p class="text-muted small">bcrypt with per-user salt, cost factor 12</p>
                 <p class="mb-1"><strong>2FA</strong></p>
-                <p class="text-muted small">6-digit email codes &middot; secrets.randbelow &middot; SMTP delivery</p>
+                <p class="text-muted small">6-digit email codes &middot; <code>secrets.randbelow</code> &middot; SMTP delivery</p>
             </div>
             <div class="col-md-6">
-                <p class="mb-1"><strong>Frontend</strong></p>
-                <p class="text-muted small">Bootstrap 5 &middot; vanilla JS &middot; Chart.js</p>
-                <p class="mb-1"><strong>Database</strong></p>
-                <p class="text-muted small">SQLite via SQLAlchemy</p>
-                <p class="mb-1"><strong>Session Management</strong></p>
-                <p class="text-muted small">Flask-Login with cryptographically signed cookies</p>
+                <p class="mb-1"><strong>Email Verification</strong></p>
+                <p class="text-muted small">email-validator (format + DNS MX) &middot; signup confirmation gate</p>
+                <p class="mb-1"><strong>Session</strong></p>
+                <p class="text-muted small">Flask-Login signed cookies &middot; HttpOnly, SameSite=Lax, Secure</p>
+                <p class="mb-1"><strong>Audit</strong></p>
+                <p class="text-muted small">Every auth event written to <code>AuthEvent</code> &middot; visible in real time</p>
             </div>
         </div>
         <p class="mt-4">
-            <a href="{{ url_for('signup') }}" class="btn btn-warning">Sign up to see it in action</a>
+            <a href="{{ url_for('signup') }}" class="btn btn-primary">Sign up to walk the flow</a>
+            <a href="{{ url_for('concepts') }}" class="btn btn-outline-primary">Read the concepts first</a>
         </p>
     </div>
 </section>

@@ -6,6 +6,8 @@
 
     const input = document.getElementById('password');
     if (!input) return;
+    const form = input.closest('form');
+    const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
 
     function bytesToHumanTime(seconds) {
         if (!isFinite(seconds)) return 'instantly';
@@ -30,12 +32,21 @@
         const hasSymbol = /[^A-Za-z0-9]/.test(pw);
         const isCommon = COMMON.has(pw.toLowerCase());
 
-        setRule('rule-length', len >= 12);
+        const lengthOK = len >= 12;
+        const commonOK = !isCommon && len > 0;
+        const allOK = lengthOK && hasUpper && hasLower && hasDigit && hasSymbol && commonOK;
+
+        setRule('rule-length', lengthOK);
         setRule('rule-upper', hasUpper);
         setRule('rule-lower', hasLower);
         setRule('rule-digit', hasDigit);
         setRule('rule-symbol', hasSymbol);
-        setRule('rule-common', !isCommon && len > 0);
+        setRule('rule-common', commonOK);
+
+        if (submitBtn) {
+            submitBtn.disabled = !allOK;
+            submitBtn.title = allOK ? '' : 'Password does not meet all requirements';
+        }
 
         let charset = 0;
         if (hasUpper) charset += 26;
